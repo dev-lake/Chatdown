@@ -68,11 +68,24 @@ The parser factory (`parsers/index.ts`) detects the current platform by hostname
 
 1. User clicks "Chatdown" button in content script
 2. Content script parses conversation using platform-specific parser
-3. Content script sends `openSidePanel` message to background worker with parsed messages
-4. Background worker opens side panel and sends `generatingArticle` loading state
-5. Background worker calls LLM API with conversation messages
-6. Background worker sends `displayArticle` message to side panel with generated article
-7. Side panel displays article with preview/markdown tabs
+3. Content script generates a hash of the conversation messages
+4. Content script sends `openSidePanel` message to background worker with parsed messages
+5. Background worker checks if cached article exists for this conversation hash
+   - If cache exists and not force regenerate: return cached article immediately
+   - If no cache or force regenerate (Shift+Click): proceed to generate
+6. Background worker opens side panel and sends `generatingArticle` loading state
+7. Background worker calls LLM API with conversation messages (streaming)
+8. Each chunk is sent to side panel via `articleChunk` and saved to storage
+9. Background worker sends `displayArticle` message to side panel with complete article
+10. Article is saved to storage with conversation hash for future use
+11. Side panel displays article with preview/markdown tabs
+
+### Caching Mechanism
+
+- Articles are cached based on conversation content hash
+- Same conversation will reuse cached article (no API call)
+- Conversation changes trigger new generation automatically
+- Hold Shift key while clicking to force regenerate (bypass cache)
 
 ### Type System
 

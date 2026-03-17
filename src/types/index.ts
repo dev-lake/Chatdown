@@ -15,6 +15,8 @@ export interface ChromeMessage {
   config?: ApiConfig;
   article?: string;
   chunk?: string;
+  forceRegenerate?: boolean;
+  sourceUrl?: string;
 }
 
 export interface ChromeResponse {

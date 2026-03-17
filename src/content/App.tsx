@@ -6,11 +6,14 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (event: React.MouseEvent) => {
     if (loading) return; // Prevent multiple clicks
 
     setLoading(true);
     setError(null);
+
+    // Check if Shift key is pressed for force regenerate
+    const forceRegenerate = event.shiftKey;
 
     try {
       const platform = detectPlatform();
@@ -34,6 +37,8 @@ export default function App() {
       const message: ChromeMessage = {
         action: 'openSidePanel',
         messages,
+        forceRegenerate,
+        sourceUrl: window.location.href,
       };
 
       // Set a timeout to re-enable the button even if no response
@@ -60,7 +65,7 @@ export default function App() {
         onClick={handleGenerate}
         disabled={loading}
         className="btn btn-ghost text-token-text-primary"
-        title="Generate article in side panel"
+        title="Generate article in side panel (Shift+Click to force regenerate)"
       >
         <div className="flex w-full items-center justify-center gap-1.5">
           {loading ? (

@@ -1,9 +1,21 @@
-import type { ChromeMessage, ChromeResponse } from '../types';
+import type { ChromeMessage, ChromeResponse, Message } from '../types';
 import { getApiConfig } from './storage';
 import { generateArticle, testConnection } from './llm-client';
 
 // Track if article generation is in progress
 let isGenerating = false;
+
+// Simple hash function for conversation content
+function hashMessages(messages: Message[]): string {
+  const content = messages.map(m => `${m.role}:${m.content}`).join('|');
+  let hash = 0;
+  for (let i = 0; i < content.length; i++) {
+    const char = content.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString(36);
+}
 
 chrome.runtime.onMessage.addListener(
   (message: ChromeMessage, sender, sendResponse: (response: ChromeResponse) => void) => {
@@ -54,12 +66,45 @@ async function handleOpenSidePanel(
     // Small delay to ensure side panel is ready
     await new Promise(resolve => setTimeout(resolve, 100));
 
+    if (!message.messages || message.messages.length === 0) {
+      const errorArticle = '# Error\n\nNo conversation found.';
+      chrome.runtime.sendMessage({
+        action: 'displayArticle',
+        article: errorArticle
+      }).catch(() => {});
+      sendResponse({ error: 'No conversation found.' });
+      return;
+    }
+
+    // Generate hash of current conversation
+    const conversationHash = hashMessages(message.messages);
+    console.log('Conversation hash:', conversationHash);
+
+    // Check if we have a cached article for this conversation (unless force regenerate)
+    if (!message.forceRegenerate) {
+      const cached = await chrome.storage.local.get(['lastGeneratedArticle', 'conversationHash']);
+
+      if (cached.conversationHash === conversationHash && cached.lastGeneratedArticle) {
+        console.log('Using cached article for this conversation');
+        // Send cached article to side panel
+        chrome.runtime.sendMessage({
+          action: 'displayArticle',
+          article: cached.lastGeneratedArticle
+        }).catch(() => {});
+        sendResponse({ article: cached.lastGeneratedArticle });
+        return;
+      }
+    } else {
+      console.log('Force regenerate requested');
+    }
+
+    // No cache or conversation changed, generate new article
+    console.log('Generating new article...');
+
     // Send loading state to side panel
     chrome.runtime.sendMessage({ action: 'generatingArticle' }).catch(() => {
       // Ignore if side panel is not open
     });
-
-    console.log('Starting article generation...');
 
     // Generate the article
     const config = await getApiConfig();
@@ -74,18 +119,8 @@ async function handleOpenSidePanel(
       return;
     }
 
-    if (!message.messages || message.messages.length === 0) {
-      const errorArticle = '# Error\n\nNo conversation found.';
-      chrome.runtime.sendMessage({
-        action: 'displayArticle',
-        article: errorArticle
-      }).catch(() => {});
-      sendResponse({ error: 'No conversation found.' });
-      return;
-    }
-
     // Clear previous article before starting new generation
-    await chrome.storage.local.set({ lastGeneratedArticle: '' });
+    await chrome.storage.local.set({ lastGeneratedArticle: '', conversationHash });
     isGenerating = true;
 
     const article = await generateArticle(message.messages, config, async (chunk) => {
@@ -106,15 +141,21 @@ async function handleOpenSidePanel(
 
     isGenerating = false;
 
-    // Save the article to storage
-    await chrome.storage.local.set({ lastGeneratedArticle: article });
+    // Append source URL to the article
+    const sourceUrl = message.sourceUrl || '';
+    const articleWithSource = sourceUrl
+      ? `${article}\n\n---\n\n**Source:** [${sourceUrl}](${sourceUrl})`
+      : article;
+
+    // Save the article to storage with conversation hash
+    await chrome.storage.local.set({ lastGeneratedArticle: articleWithSource, conversationHash });
 
     // Send the article to the side panel
-    chrome.runtime.sendMessage({ action: 'displayArticle', article }).catch(() => {
+    chrome.runtime.sendMessage({ action: 'displayArticle', article: articleWithSource }).catch(() => {
       // Ignore if side panel is closed
     });
 
-    sendResponse({ article });
+    sendResponse({ article: articleWithSource });
   } catch (error) {
     console.error('Error in handleOpenSidePanel:', error);
     isGenerating = false;
