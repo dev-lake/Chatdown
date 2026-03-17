@@ -6,8 +6,37 @@ export default function App() {
   const [article, setArticle] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'preview' | 'markdown'>('preview');
   const [loading, setLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
 
   useEffect(() => {
+    // Request last article when side panel opens
+    const loadLastArticle = async () => {
+      try {
+        // Check if generation is in progress
+        const generatingResponse = await chrome.runtime.sendMessage({ action: 'isGenerating' });
+        const isCurrentlyGenerating = generatingResponse?.success || false;
+
+        // Get the last article (might be partial if generating)
+        const response = await chrome.runtime.sendMessage({ action: 'getLastArticle' });
+        console.log('Received last article:', response, 'isGenerating:', isCurrentlyGenerating);
+
+        if (response?.article) {
+          if (isCurrentlyGenerating) {
+            // Show as streaming content if generation is in progress
+            setStreamingContent(response.article);
+            setLoading(true);
+          } else {
+            // Show as completed article
+            setArticle(response.article);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load last article:', error);
+      }
+    };
+
+    loadLastArticle();
+
     // Listen for messages from background script
     const handleMessage = (message: ChromeMessage) => {
       console.log('Sidepanel received message:', message);
@@ -15,9 +44,13 @@ export default function App() {
       if (message.action === 'displayArticle' && message.article) {
         setArticle(message.article);
         setLoading(false);
+        setStreamingContent('');
       } else if (message.action === 'generatingArticle') {
         setLoading(true);
         setArticle(null);
+        setStreamingContent('');
+      } else if (message.action === 'articleChunk' && message.chunk) {
+        setStreamingContent(prev => prev + message.chunk);
       }
     };
 
@@ -49,17 +82,61 @@ export default function App() {
   };
 
   const renderPreview = () => {
-    if (!article) return null;
-    const html = marked(article);
+    const content = article || streamingContent;
+    if (!content) return null;
+    const html = marked(content);
     return <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
-  if (loading) {
+  if (loading || streamingContent) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin text-4xl mb-4">⏳</div>
-          <p className="text-gray-600">Generating article...</p>
+      <div className="flex flex-col h-screen">
+        {/* Header */}
+        <div className="flex-shrink-0 flex items-center gap-2 p-4 border-b bg-white">
+          <div className="animate-pulse text-blue-600">✍️</div>
+          <span className="text-sm text-gray-600">Generating article...</span>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex-shrink-0 flex border-b bg-white">
+          <button
+            onClick={() => setActiveTab('preview')}
+            className={`px-4 py-2 font-medium transition-colors ${
+              activeTab === 'preview'
+                ? 'border-b-2 border-blue-600 text-blue-600'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            Preview
+          </button>
+          <button
+            onClick={() => setActiveTab('markdown')}
+            className={`px-4 py-2 font-medium transition-colors ${
+              activeTab === 'markdown'
+                ? 'border-b-2 border-blue-600 text-blue-600'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            Markdown
+          </button>
+        </div>
+
+        {/* Streaming Content */}
+        <div className="flex-1 overflow-y-auto p-6 bg-white">
+          {streamingContent ? (
+            activeTab === 'preview' ? (
+              renderPreview()
+            ) : (
+              <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800">{streamingContent}</pre>
+            )
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="animate-spin text-4xl mb-4">⏳</div>
+                <p className="text-gray-600">Waiting for response...</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

@@ -10,10 +10,11 @@ export interface ApiConfig {
 }
 
 export interface ChromeMessage {
-  action: 'generateArticle' | 'testConnection' | 'displayArticle' | 'generatingArticle' | 'openSidePanel';
+  action: 'generateArticle' | 'testConnection' | 'displayArticle' | 'generatingArticle' | 'openSidePanel' | 'articleChunk' | 'getLastArticle' | 'isGenerating';
   messages?: Message[];
   config?: ApiConfig;
   article?: string;
+  chunk?: string;
 }
 
 export interface ChromeResponse {

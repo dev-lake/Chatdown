@@ -12,7 +12,8 @@ Requirements:
 
 export async function generateArticle(
   messages: Message[],
-  config: ApiConfig
+  config: ApiConfig,
+  onProgress?: (chunk: string) => void
 ): Promise<string> {
   const formattedMessages = messages
     .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
@@ -34,6 +35,7 @@ export async function generateArticle(
           content: prompt,
         },
       ],
+      stream: true,
     }),
   });
 
@@ -42,8 +44,47 @@ export async function generateArticle(
     throw new Error(`API request failed: ${error}`);
   }
 
-  const data = await response.json();
-  return data.choices[0].message.content;
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('Response body is not readable');
+  }
+
+  const decoder = new TextDecoder();
+  let fullContent = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              fullContent += content;
+              if (onProgress) {
+                onProgress(content);
+              }
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return fullContent;
 }
 
 export async function testConnection(config: ApiConfig): Promise<boolean> {

@@ -7,6 +7,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
+    if (loading) return; // Prevent multiple clicks
+
     setLoading(true);
     setError(null);
 
@@ -34,8 +36,14 @@ export default function App() {
         messages,
       };
 
+      // Set a timeout to re-enable the button even if no response
+      const timeout = setTimeout(() => {
+        setLoading(false);
+      }, 2000);
+
       chrome.runtime.sendMessage(message, (response: ChromeResponse) => {
-        if (response.error) {
+        clearTimeout(timeout);
+        if (response?.error) {
           setError(response.error);
         }
         setLoading(false);
