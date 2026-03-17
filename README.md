@@ -1,85 +1,142 @@
-# Chatdown Browser Extension
+# Chatdown
 
-Convert AI chat conversations into structured Markdown articles.
+> Convert AI chat conversations into structured Markdown articles with a single click.
 
-## Features
+Chatdown is a Chrome extension that transforms your AI chat conversations into well-structured, editable Markdown articles. It supports multiple AI platforms and uses your own LLM API for content generation.
 
-- Supports ChatGPT, Google Gemini, and DeepSeek
-- Uses your own LLM API (OpenAI-compatible)
-- Preview and export as Markdown
-- Copy to clipboard or download
+## ✨ Features
 
-## Installation
+- 🤖 **Multi-Platform Support** - Works with ChatGPT, Google Gemini, and DeepSeek
+- 🔄 **Streaming Generation** - Real-time article generation with live preview
+- ✏️ **Typora-Style Editor** - Edit generated articles with a clean, distraction-free interface
+- 💾 **Smart Caching** - Automatically caches articles based on conversation content
+- 🎨 **Dual View** - Switch between rendered preview and raw Markdown
+- 📋 **Easy Export** - Copy to clipboard or download as .md file
+- 🔗 **Source Tracking** - Automatically includes original conversation URL
+- 🔌 **Your Own API** - Use any OpenAI-compatible API endpoint
 
-1. Install dependencies:
+## 📸 Screenshots
+
+<!-- Add screenshots here -->
+
+## 🚀 Quick Start
+
+### Installation
+
+1. **Clone the repository**
+```bash
+git clone https://github.com/dev-lake/Chatdown.git
+cd Chatdown
+```
+
+2. **Install dependencies**
 ```bash
 npm install
 ```
 
-2. Build the extension:
+3. **Build the extension**
 ```bash
 npm run build
 ```
 
-3. Load in Chrome:
+4. **Load in Chrome**
    - Open `chrome://extensions/`
-   - Enable "Developer mode"
+   - Enable "Developer mode" (top right)
    - Click "Load unpacked"
    - Select the `dist/` directory
 
-## Development
+### Configuration
 
-Run with hot reload:
+1. Click the Chatdown extension icon in your toolbar
+2. Click "Open Settings"
+3. Configure your API:
+   - **API Base URL**: Your OpenAI-compatible endpoint (e.g., `https://api.openai.com`)
+   - **API Key**: Your API key
+   - **Model Name**: Model to use (e.g., `gpt-4o-mini`, `gpt-4o`)
+4. Click "Test Connection" to verify
+5. Click "Save Settings"
+
+## 📖 Usage
+
+1. **Start a conversation** on any supported AI platform
+2. **Click the "Chatdown" button** that appears in the chat interface
+3. **Watch the magic happen** - The side panel opens and streams the generated article
+4. **Edit if needed** - Click the ✏️ button to edit the article
+5. **Export** - Copy to clipboard (📋) or download (💾) as Markdown
+
+### Advanced Features
+
+- **Force Regenerate**: Hold `Shift` while clicking the Chatdown button to bypass cache and regenerate
+- **Edit Mode**: Click ✏️ to enter edit mode, make changes, then Save or Cancel
+- **Smart Caching**: Same conversation content won't regenerate unless you force it
+
+## 🎯 Supported Platforms
+
+| Platform | URL | Status |
+|----------|-----|--------|
+| ChatGPT | chat.openai.com, chatgpt.com | ✅ |
+| Google Gemini | gemini.google.com | ✅ |
+| DeepSeek | chat.deepseek.com | ✅ |
+
+## 🛠️ Development
+
+### Run with hot reload
 ```bash
 npm run dev
 ```
 
-Then load the `dist/` directory as an unpacked extension.
+Then load the `dist/` directory as an unpacked extension. Changes will be reflected automatically.
 
-## Configuration
+### Build for production
+```bash
+npm run build
+```
 
-1. Click the extension icon in the toolbar
-2. Click "Open Settings"
-3. Enter your API configuration:
-   - API Base URL (e.g., `https://api.openai.com`)
-   - API Key
-   - Model Name (e.g., `gpt-4o-mini`)
-4. Click "Test Connection" to verify
-5. Click "Save Settings"
+### Project Structure
 
-## Usage
+```
+src/
+├── background/       # Service worker and API client
+├── content/          # Content scripts injected into chat pages
+├── sidepanel/        # Side panel UI for article display
+├── popup/            # Extension popup
+├── settings/         # Settings page
+└── types/            # TypeScript type definitions
+```
 
-1. Navigate to a supported AI chat platform
-2. Have a conversation
-3. Click the 📝 button on the right edge of the page
-4. The browser's native side panel will open with your generated article
-5. Switch between Preview and Markdown tabs
-6. Copy to clipboard or download as .md file
+## 🏗️ Tech Stack
 
-**Note**: The side panel uses Chrome's native Side Panel API, similar to the bookmarks sidebar. This means:
-- The panel won't interfere with the page content
-- You can view the article alongside the chat
-- The panel can be closed/reopened without losing content
+- **Framework**: React 18 with TypeScript
+- **Build Tool**: Vite with @crxjs/vite-plugin
+- **Styling**: Tailwind CSS with @tailwindcss/typography
+- **Markdown**: marked (for rendering)
+- **Extension**: Chrome Extension Manifest v3
 
-## Supported Platforms
+## 🔧 Architecture
 
-- ChatGPT (chat.openai.com, chatgpt.com)
-- Google Gemini (gemini.google.com)
-- DeepSeek (chat.deepseek.com)
+Chatdown follows Chrome Extension Manifest v3 architecture:
 
-## Tech Stack
+- **Background Service Worker**: Handles API calls and message routing
+- **Content Scripts**: Inject UI into chat platforms and parse conversations
+- **Side Panel**: Displays and allows editing of generated articles
+- **Chrome Storage**: Persists settings and cached articles
 
-- TypeScript
-- React 18
-- Vite
-- Tailwind CSS
-- Chrome Extension Manifest v3
+For more details, see [CLAUDE.md](./CLAUDE.md).
 
-## Note on Icons
+## 🤝 Contributing
 
-The extension requires icon files in `public/icons/`:
-- `icon16.png` (16x16)
-- `icon48.png` (48x48)
-- `icon128.png` (128x128)
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-You'll need to create these icons before the extension can be loaded.
+## 📝 License
+
+MIT License - see LICENSE file for details
+
+## 🙏 Acknowledgments
+
+- Built with [Vite](https://vitejs.dev/) and [@crxjs/vite-plugin](https://crxjs.dev/vite-plugin)
+- Markdown rendering by [marked](https://marked.js.org/)
+- Styled with [Tailwind CSS](https://tailwindcss.com/)
+
+## 📮 Support
+
+If you encounter any issues or have suggestions, please [open an issue](https://github.com/dev-lake/Chatdown/issues).
