@@ -10,7 +10,7 @@ export interface ApiConfig {
 }
 
 export interface ChromeMessage {
-  action: 'generateArticle' | 'testConnection' | 'displayArticle' | 'generatingArticle' | 'openSidePanel' | 'articleChunk' | 'getLastArticle' | 'isGenerating';
+  action: 'generateArticle' | 'testConnection' | 'displayArticle' | 'generatingArticle' | 'openSidePanel' | 'articleChunk' | 'getLastArticle' | 'isGenerating' | 'regenerateArticle';
   messages?: Message[];
   config?: ApiConfig;
   article?: string;

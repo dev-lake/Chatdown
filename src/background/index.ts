@@ -44,6 +44,11 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
+    if (message.action === 'regenerateArticle') {
+      handleRegenerateArticle(sendResponse);
+      return true;
+    }
+
     return false;
   }
 );
@@ -79,6 +84,12 @@ async function handleOpenSidePanel(
     // Generate hash of current conversation
     const conversationHash = hashMessages(message.messages);
     console.log('Conversation hash:', conversationHash);
+
+    // Save messages and source URL for regeneration (always save, even for cached articles)
+    await chrome.storage.local.set({
+      lastMessages: message.messages,
+      lastSourceUrl: message.sourceUrl || ''
+    });
 
     // Check if we have a cached article for this conversation (unless force regenerate)
     if (!message.forceRegenerate) {
@@ -226,5 +237,78 @@ async function handleGetLastArticle(
   } catch (error) {
     console.error('Error getting last article:', error);
     sendResponse({ article: undefined });
+  }
+}
+
+async function handleRegenerateArticle(
+  sendResponse: (response: ChromeResponse) => void
+) {
+  try {
+    // Get stored messages and source URL
+    const stored = await chrome.storage.local.get(['lastMessages', 'lastSourceUrl']);
+
+    if (!stored.lastMessages || stored.lastMessages.length === 0) {
+      sendResponse({ error: 'No conversation found to regenerate.' });
+      return;
+    }
+
+    console.log('Regenerating article...');
+
+    // Send loading state to side panel
+    chrome.runtime.sendMessage({ action: 'generatingArticle' }).catch(() => {});
+
+    // Get API config
+    const config = await getApiConfig();
+    if (!config) {
+      const errorArticle = '# Error\n\nAPI configuration not found. Please configure in settings.';
+      chrome.runtime.sendMessage({
+        action: 'displayArticle',
+        article: errorArticle
+      }).catch(() => {});
+      sendResponse({ error: 'API configuration not found.' });
+      return;
+    }
+
+    // Clear previous article
+    const conversationHash = hashMessages(stored.lastMessages);
+    await chrome.storage.local.set({ lastGeneratedArticle: '', conversationHash });
+    isGenerating = true;
+
+    // Generate new article
+    const article = await generateArticle(stored.lastMessages, config, async (chunk) => {
+      chrome.runtime.sendMessage({
+        action: 'articleChunk',
+        chunk
+      }).catch(() => {});
+
+      const result = await chrome.storage.local.get('lastGeneratedArticle');
+      const currentContent = result.lastGeneratedArticle || '';
+      await chrome.storage.local.set({ lastGeneratedArticle: currentContent + chunk });
+    });
+
+    isGenerating = false;
+
+    // Append source URL
+    const sourceUrl = stored.lastSourceUrl || '';
+    const articleWithSource = sourceUrl
+      ? `${article}\n\n---\n\n**Source:** [${sourceUrl}](${sourceUrl})`
+      : article;
+
+    // Save and send
+    await chrome.storage.local.set({ lastGeneratedArticle: articleWithSource, conversationHash });
+    chrome.runtime.sendMessage({ action: 'displayArticle', article: articleWithSource }).catch(() => {});
+    sendResponse({ article: articleWithSource });
+  } catch (error) {
+    console.error('Error regenerating article:', error);
+    isGenerating = false;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorArticle = `# Error\n\n${errorMessage}`;
+
+    chrome.runtime.sendMessage({
+      action: 'displayArticle',
+      article: errorArticle
+    }).catch(() => {});
+
+    sendResponse({ error: errorMessage });
   }
 }
