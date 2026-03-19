@@ -1,6 +1,7 @@
 import type { ChromeMessage, ChromeResponse, Message } from '../types';
-import { getApiConfig } from './storage';
+import { getApiConfig, getNotionConfig } from './storage';
 import { generateArticle, testConnection } from './llm-client';
+import { testNotionConnection, exportToNotion } from './notion-client';
 
 // Track if article generation is in progress
 let isGenerating = false;
@@ -46,6 +47,16 @@ chrome.runtime.onMessage.addListener(
 
     if (message.action === 'regenerateArticle') {
       handleRegenerateArticle(sendResponse);
+      return true;
+    }
+
+    if (message.action === 'testNotionConnection') {
+      handleTestNotionConnection(message, sendResponse);
+      return true;
+    }
+
+    if (message.action === 'exportToNotion') {
+      handleExportToNotion(message, sendResponse);
       return true;
     }
 
@@ -310,5 +321,56 @@ async function handleRegenerateArticle(
     }).catch(() => {});
 
     sendResponse({ error: errorMessage });
+  }
+}
+
+async function handleTestNotionConnection(
+  message: ChromeMessage,
+  sendResponse: (response: ChromeResponse) => void
+) {
+  try {
+    if (!message.notionConfig) {
+      sendResponse({ error: 'No Notion configuration provided' });
+      return;
+    }
+
+    const success = await testNotionConnection(message.notionConfig);
+    sendResponse({ success });
+  } catch (error) {
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}
+
+async function handleExportToNotion(
+  message: ChromeMessage,
+  sendResponse: (response: ChromeResponse) => void
+) {
+  try {
+    const config = await getNotionConfig();
+
+    if (!config) {
+      sendResponse({ error: 'Notion not configured. Please configure in settings.' });
+      return;
+    }
+
+    if (!message.articleTitle || !message.articleContent) {
+      sendResponse({ error: 'No article content to export' });
+      return;
+    }
+
+    const result = await exportToNotion(config, message.articleTitle, message.articleContent);
+
+    if (result.success) {
+      sendResponse({ success: true, article: result.pageUrl });
+    } else {
+      sendResponse({ error: result.error });
+    }
+  } catch (error) {
+    sendResponse({
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
   }
 }

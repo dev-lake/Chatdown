@@ -12,6 +12,7 @@ Chatdown is a Chrome extension that transforms your AI chat conversations into w
 - 💾 **Smart Caching** - Automatically caches articles based on conversation content
 - 🎨 **Dual View** - Switch between rendered preview and raw Markdown
 - 📋 **Easy Export** - Copy to clipboard or download as .md file
+- 📤 **Notion Integration** - Export articles directly to your Notion workspace
 - 🔗 **Source Tracking** - Automatically includes original conversation URL
 - 🔌 **Your Own API** - Use any OpenAI-compatible API endpoint
 
@@ -56,13 +57,28 @@ npm run build
 4. Click "Test Connection" to verify
 5. Click "Save Settings"
 
+### Optional: Notion Integration
+
+To enable exporting articles to Notion:
+
+1. In Settings, scroll to "Notion Integration (Optional)"
+2. Create an integration at [notion.so/my-integrations](https://www.notion.so/my-integrations)
+3. Copy the Integration Token and Database ID
+4. Paste them in the settings
+5. Click "Test Notion Connection" to verify
+
+For detailed setup instructions, see [NOTION_SETUP.md](./NOTION_SETUP.md).
+
 ## 📖 Usage
 
 1. **Start a conversation** on any supported AI platform
 2. **Click the "Chatdown" button** that appears in the chat interface
 3. **Watch the magic happen** - The side panel opens and streams the generated article
 4. **Edit if needed** - Click the ✏️ button to edit the article
-5. **Export** - Copy to clipboard (📋) or download (💾) as Markdown
+5. **Export** - Click the 📤 button to choose export options:
+   - Copy to Clipboard
+   - Download as Markdown
+   - Export to Notion
 
 ### Advanced Features
 

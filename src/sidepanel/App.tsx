@@ -20,6 +20,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // Initialize Tiptap editor (only used in edit mode)
   const editor = useEditor({
@@ -170,6 +172,38 @@ export default function App() {
     }
   };
 
+  const handleExportToNotion = async () => {
+    if (!markdownContent) return;
+
+    setExporting(true);
+    setShowExportMenu(false);
+
+    // Extract title from markdown (first # heading)
+    const titleMatch = markdownContent.match(/^#\s+(.+)$/m);
+    const title = titleMatch ? titleMatch[1] : `Chatdown Article ${new Date().toLocaleDateString()}`;
+
+    const message: ChromeMessage = {
+      action: 'exportToNotion',
+      articleTitle: title,
+      articleContent: markdownContent,
+    };
+
+    try {
+      const response = await chrome.runtime.sendMessage(message);
+
+      if (response.success) {
+        alert(`Exported to Notion successfully!\n${response.article || ''}`);
+      } else {
+        alert(`Export failed: ${response.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Export to Notion failed:', error);
+      alert('Export to Notion failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const renderMarkdown = (markdown: string) => {
     const html = marked.parse(markdown, { async: false }) as string;
     return <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: html }} />;
@@ -218,6 +252,11 @@ export default function App() {
               <span className="text-sm text-gray-600">Editing...</span>
               <span className="text-xs text-gray-400">(Click Save when done)</span>
             </>
+          ) : exporting ? (
+            <>
+              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-sm text-gray-600">Exporting to Notion...</span>
+            </>
           ) : (
             <span className="text-sm text-gray-600">Article</span>
           )}
@@ -256,20 +295,59 @@ export default function App() {
               >
                 ✏️
               </button>
-              <button
-                onClick={handleCopy}
-                className="p-2 text-gray-700 hover:bg-gray-100 rounded transition-colors"
-                title="Copy to clipboard"
-              >
-                📋
-              </button>
-              <button
-                onClick={handleDownload}
-                className="p-2 text-gray-700 hover:bg-gray-100 rounded transition-colors"
-                title="Download as Markdown"
-              >
-                💾
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  disabled={exporting}
+                  className="p-2 text-gray-700 hover:bg-gray-100 rounded transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Export"
+                >
+                  📤
+                  <span className="text-xs">▼</span>
+                </button>
+                {showExportMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowExportMenu(false)}
+                    />
+                    <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                      <button
+                        onClick={() => {
+                          handleCopy();
+                          setShowExportMenu(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <span>📋</span>
+                        <span>Copy to Clipboard</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleDownload();
+                          setShowExportMenu(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <span>💾</span>
+                        <span>Download Markdown</span>
+                      </button>
+                      <div className="border-t border-gray-200 my-1" />
+                      <button
+                        onClick={() => {
+                          handleExportToNotion();
+                          setShowExportMenu(false);
+                        }}
+                        disabled={exporting}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <span>📤</span>
+                        <span>Export to Notion</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </>
           )}
         </div>
