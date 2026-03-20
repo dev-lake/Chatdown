@@ -7,7 +7,7 @@ import { detectPlatform } from './parsers';
 const PLATFORM_SELECTORS = {
   chatgpt: '#conversation-header-actions',
   gemini: '.right-section, .buttons-container',
-  deepseek: '.chat-header-actions, .chat-header',
+  deepseek: '._2be88ba',
 };
 
 // Wait for DOM to be fully loaded and header to be available
@@ -18,6 +18,8 @@ function init() {
   }
 
   const platform = detectPlatform();
+  console.log('[Chatdown] Detected platform:', platform);
+
   if (platform === 'unknown') {
     console.warn('[Chatdown] Unknown platform, cannot inject button');
     return;
@@ -28,11 +30,16 @@ function init() {
   let targetElement: Element | null = null;
 
   for (const selector of selectors) {
+    console.log('[Chatdown] Trying selector:', selector);
     targetElement = document.querySelector(selector);
-    if (targetElement) break;
+    if (targetElement) {
+      console.log('[Chatdown] Found target element with selector:', selector);
+      break;
+    }
   }
 
   if (!targetElement) {
+    console.log('[Chatdown] Target element not found, retrying...');
     // If target not found yet, try again after a short delay
     setTimeout(init, 500);
     return;
@@ -41,7 +48,7 @@ function init() {
   // Create container with isolated styles
   const container = document.createElement('div');
   container.id = 'chatdown-root';
-  container.style.cssText = 'all: initial; display: inline-block;';
+  container.style.cssText = 'display: inline-block;';
 
   // Platform-specific insertion logic
   if (platform === 'chatgpt') {
@@ -60,6 +67,14 @@ function init() {
     } else {
       targetElement.appendChild(container);
     }
+  } else if (platform === 'deepseek') {
+    // For DeepSeek, insert before the share button (element with class _57370c5)
+    const shareButton = targetElement.querySelector('._57370c5');
+    if (shareButton) {
+      targetElement.insertBefore(container, shareButton);
+    } else {
+      targetElement.appendChild(container);
+    }
   } else {
     // Default: append to target element
     targetElement.appendChild(container);
@@ -67,6 +82,7 @@ function init() {
 
   const root = createRoot(container);
   root.render(<App />);
+  console.log('[Chatdown] Button rendered successfully');
 }
 
 // Initialize when DOM is ready
