@@ -28,6 +28,7 @@ export interface ChromeMessage {
   chunk?: string;
   forceRegenerate?: boolean;
   sourceUrl?: string;
+  platform?: Platform;
   notionConfig?: NotionConfig;
   articleTitle?: string;
   articleContent?: string;
@@ -37,6 +38,7 @@ export interface ChromeResponse {
   article?: string;
   error?: string;
   success?: boolean;
+  missingProperties?: string[];
 }
 
 export type Platform = 'chatgpt' | 'gemini' | 'deepseek' | 'unknown';

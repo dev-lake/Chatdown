@@ -78,7 +78,21 @@ export default function App() {
     chrome.runtime.sendMessage(message, (response: ChromeResponse) => {
       setTestingNotion(false);
       if (response.success) {
-        setNotionMessage({ type: 'success', text: 'Notion connection successful!' });
+        setNotionMessage({ type: 'success', text: '✅ Notion connection successful! All required properties are configured.' });
+      } else if (response.missingProperties && response.missingProperties.length > 0) {
+        const propertyTypes: Record<string, string> = {
+          source: 'URL',
+          platform: 'Multi-select',
+          tag: 'Multi-select',
+          timestamp: 'Date'
+        };
+        const details = response.missingProperties
+          .map(prop => `• ${prop} (${propertyTypes[prop] || 'Unknown'})`)
+          .join('\n');
+        setNotionMessage({
+          type: 'error',
+          text: `❌ Missing required properties in your Notion database:\n\n${details}\n\nPlease add these properties to your database and try again. See the "Required Database Properties" section above for details.`
+        });
       } else {
         setNotionMessage({ type: 'error', text: response.error || 'Notion connection failed' });
       }
@@ -220,6 +234,49 @@ export default function App() {
             </ol>
           </div>
 
+          {/* Required Database Properties */}
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <h3 className="text-sm font-semibold text-amber-900 mb-2">⚙️ Required Database Properties</h3>
+            <p className="text-sm text-amber-800 mb-3">
+              Your Notion database must have these properties for articles to export correctly:
+            </p>
+            <div className="space-y-2 text-sm text-amber-900">
+              <div className="bg-white px-3 py-2 rounded border border-green-200">
+                <span className="font-mono font-semibold">Name</span>
+                <span className="mx-2">→</span>
+                <span className="text-green-700">Type: Title (Default)</span>
+                <div className="text-xs text-green-600 mt-1">✓ Already exists in every database - stores the article title</div>
+              </div>
+              <div className="bg-white px-3 py-2 rounded border border-amber-200">
+                <span className="font-mono font-semibold">source</span>
+                <span className="mx-2">→</span>
+                <span className="text-amber-700">Type: URL</span>
+                <div className="text-xs text-amber-600 mt-1">Stores the original conversation URL</div>
+              </div>
+              <div className="bg-white px-3 py-2 rounded border border-amber-200">
+                <span className="font-mono font-semibold">platform</span>
+                <span className="mx-2">→</span>
+                <span className="text-amber-700">Type: Multi-select</span>
+                <div className="text-xs text-amber-600 mt-1">Records the source platform (ChatGPT, DeepSeek, Gemini)</div>
+              </div>
+              <div className="bg-white px-3 py-2 rounded border border-amber-200">
+                <span className="font-mono font-semibold">timestamp</span>
+                <span className="mx-2">→</span>
+                <span className="text-amber-700">Type: Date</span>
+                <div className="text-xs text-amber-600 mt-1">Records when the article was created</div>
+              </div>
+              <div className="bg-white px-3 py-2 rounded border border-blue-200">
+                <span className="font-mono font-semibold">tag</span>
+                <span className="mx-2">→</span>
+                <span className="text-blue-700">Type: Multi-select (Optional)</span>
+                <div className="text-xs text-blue-600 mt-1">For article categorization - initially empty, can be filled manually</div>
+              </div>
+            </div>
+            <p className="text-xs text-amber-700 mt-3 italic">
+              💡 Tip: Add these properties to your database by clicking the "+" button in the database header
+            </p>
+          </div>
+
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-1">Integration Token</label>
@@ -261,7 +318,7 @@ export default function App() {
 
             {notionMessage && (
               <div
-                className={`p-3 rounded ${
+                className={`p-3 rounded whitespace-pre-line ${
                   notionMessage.type === 'success'
                     ? 'bg-green-100 text-green-800'
                     : 'bg-red-100 text-red-800'

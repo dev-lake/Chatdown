@@ -39,6 +39,7 @@ export default function App() {
         messages,
         forceRegenerate,
         sourceUrl: window.location.href,
+        platform,
       };
 
       // Set a timeout to re-enable the button even if no response

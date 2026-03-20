@@ -2,8 +2,8 @@ import type { NotionConfig, NotionBlock } from '../types';
 
 const NOTION_API_VERSION = '2022-06-28';
 
-// Test Notion connection
-export async function testNotionConnection(config: NotionConfig): Promise<boolean> {
+// Test Notion connection and verify required properties
+export async function testNotionConnection(config: NotionConfig): Promise<{ success: boolean; error?: string; missingProperties?: string[] }> {
   try {
     const response = await fetch(`https://api.notion.com/v1/databases/${config.databaseId}`, {
       method: 'GET',
@@ -12,10 +12,36 @@ export async function testNotionConnection(config: NotionConfig): Promise<boolea
         'Notion-Version': NOTION_API_VERSION,
       },
     });
-    return response.ok;
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      return {
+        success: false,
+        error: errorData.message || 'Failed to connect to Notion database'
+      };
+    }
+
+    // Check if required properties exist (tag is optional)
+    const data = await response.json();
+    const properties = data.properties || {};
+
+    const requiredProperties = ['source', 'platform', 'timestamp'];
+    const missingProperties = requiredProperties.filter(prop => !properties[prop]);
+
+    if (missingProperties.length > 0) {
+      return {
+        success: false,
+        missingProperties
+      };
+    }
+
+    return { success: true };
   } catch (error) {
     console.error('Notion connection test failed:', error);
-    return false;
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    };
   }
 }
 
@@ -319,7 +345,9 @@ function markdownToNotionBlocks(markdown: string): NotionBlock[] {
 export async function exportToNotion(
   config: NotionConfig,
   title: string,
-  content: string
+  content: string,
+  sourceUrl?: string,
+  platform?: string
 ): Promise<{ success: boolean; pageUrl?: string; error?: string }> {
   try {
     console.log('Starting Notion export...');
@@ -328,6 +356,56 @@ export async function exportToNotion(
     const blocks = markdownToNotionBlocks(content);
     console.log('Generated blocks:', blocks.length);
     console.log('First 3 blocks:', JSON.stringify(blocks.slice(0, 3), null, 2));
+
+    // First, get database schema to check which properties exist
+    const dbResponse = await fetch(`https://api.notion.com/v1/databases/${config.databaseId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${config.integrationToken}`,
+        'Notion-Version': NOTION_API_VERSION,
+      },
+    });
+
+    let hasTagProperty = false;
+    if (dbResponse.ok) {
+      const dbData = await dbResponse.json();
+      hasTagProperty = !!dbData.properties?.tag;
+    }
+
+    // Build properties object
+    const properties: any = {
+      title: {
+        title: [{ type: 'text', text: { content: title } }]
+      }
+    };
+
+    // Add source URL if provided
+    if (sourceUrl) {
+      properties.source = {
+        url: sourceUrl
+      };
+    }
+
+    // Add platform if provided
+    if (platform && platform !== 'unknown') {
+      properties.platform = {
+        multi_select: [{ name: platform }]
+      };
+    }
+
+    // Add tag property only if it exists in the database (empty for manual categorization)
+    if (hasTagProperty) {
+      properties.tag = {
+        multi_select: []
+      };
+    }
+
+    // Add timestamp
+    properties.timestamp = {
+      date: {
+        start: new Date().toISOString()
+      }
+    };
 
     // Create page
     const response = await fetch('https://api.notion.com/v1/pages', {
@@ -339,11 +417,7 @@ export async function exportToNotion(
       },
       body: JSON.stringify({
         parent: { database_id: config.databaseId },
-        properties: {
-          title: {
-            title: [{ type: 'text', text: { content: title } }]
-          }
-        },
+        properties,
         children: blocks.slice(0, 100) // Notion limits to 100 blocks per request
       }),
     });

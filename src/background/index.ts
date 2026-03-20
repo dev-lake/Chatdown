@@ -96,10 +96,11 @@ async function handleOpenSidePanel(
     const conversationHash = hashMessages(message.messages);
     console.log('Conversation hash:', conversationHash);
 
-    // Save messages and source URL for regeneration (always save, even for cached articles)
+    // Save messages, source URL, and platform for regeneration (always save, even for cached articles)
     await chrome.storage.local.set({
       lastMessages: message.messages,
-      lastSourceUrl: message.sourceUrl || ''
+      lastSourceUrl: message.sourceUrl || '',
+      lastPlatform: message.platform || 'unknown'
     });
 
     // Check if we have a cached article for this conversation (unless force regenerate)
@@ -334,8 +335,21 @@ async function handleTestNotionConnection(
       return;
     }
 
-    const success = await testNotionConnection(message.notionConfig);
-    sendResponse({ success });
+    const result = await testNotionConnection(message.notionConfig);
+
+    if (result.success) {
+      sendResponse({ success: true });
+    } else if (result.missingProperties && result.missingProperties.length > 0) {
+      sendResponse({
+        success: false,
+        missingProperties: result.missingProperties
+      });
+    } else {
+      sendResponse({
+        success: false,
+        error: result.error || 'Connection failed'
+      });
+    }
   } catch (error) {
     sendResponse({
       success: false,
@@ -361,7 +375,18 @@ async function handleExportToNotion(
       return;
     }
 
-    const result = await exportToNotion(config, message.articleTitle, message.articleContent);
+    // Retrieve sourceUrl and platform from storage
+    const stored = await chrome.storage.local.get(['lastSourceUrl', 'lastPlatform']);
+    const sourceUrl = stored.lastSourceUrl || '';
+    const platform = stored.lastPlatform || 'unknown';
+
+    const result = await exportToNotion(
+      config,
+      message.articleTitle,
+      message.articleContent,
+      sourceUrl,
+      platform
+    );
 
     if (result.success) {
       sendResponse({ success: true, article: result.pageUrl });
