@@ -1,6 +1,14 @@
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { detectPlatform } from './parsers';
+
+// Platform-specific selectors for button injection
+const PLATFORM_SELECTORS = {
+  chatgpt: '#conversation-header-actions',
+  gemini: '.right-section, .buttons-container',
+  deepseek: '.chat-header-actions, .chat-header',
+};
 
 // Wait for DOM to be fully loaded and header to be available
 function init() {
@@ -9,11 +17,23 @@ function init() {
     return;
   }
 
-  // Find the header actions container
-  const headerActions = document.getElementById('conversation-header-actions');
+  const platform = detectPlatform();
+  if (platform === 'unknown') {
+    console.warn('[Chatdown] Unknown platform, cannot inject button');
+    return;
+  }
 
-  if (!headerActions) {
-    // If header not found yet, try again after a short delay
+  // Try platform-specific selectors
+  const selectors = PLATFORM_SELECTORS[platform].split(', ');
+  let targetElement: Element | null = null;
+
+  for (const selector of selectors) {
+    targetElement = document.querySelector(selector);
+    if (targetElement) break;
+  }
+
+  if (!targetElement) {
+    // If target not found yet, try again after a short delay
     setTimeout(init, 500);
     return;
   }
@@ -23,12 +43,26 @@ function init() {
   container.id = 'chatdown-root';
   container.style.cssText = 'all: initial; display: inline-block;';
 
-  // Insert before the last child (the options menu button)
-  const lastChild = headerActions.lastElementChild;
-  if (lastChild) {
-    headerActions.insertBefore(container, lastChild);
+  // Platform-specific insertion logic
+  if (platform === 'chatgpt') {
+    // Insert before the last child (the options menu button)
+    const lastChild = targetElement.lastElementChild;
+    if (lastChild) {
+      targetElement.insertBefore(container, lastChild);
+    } else {
+      targetElement.appendChild(container);
+    }
+  } else if (platform === 'gemini') {
+    // For Gemini, insert before the last buttons-container (which contains the more_vert menu)
+    const lastButtonsContainer = targetElement.querySelector('.buttons-container:last-child');
+    if (lastButtonsContainer) {
+      targetElement.insertBefore(container, lastButtonsContainer);
+    } else {
+      targetElement.appendChild(container);
+    }
   } else {
-    headerActions.appendChild(container);
+    // Default: append to target element
+    targetElement.appendChild(container);
   }
 
   const root = createRoot(container);

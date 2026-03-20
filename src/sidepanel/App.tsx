@@ -205,7 +205,11 @@ export default function App() {
   };
 
   const renderMarkdown = (markdown: string) => {
-    const html = marked.parse(markdown, { async: false }) as string;
+    // Check if content is already HTML (from editing)
+    // Simple heuristic: if it contains HTML tags like <p>, <div>, <h1>, etc.
+    const isHtml = /<\/?[a-z][\s\S]*>/i.test(markdown);
+
+    const html = isHtml ? markdown : (marked.parse(markdown, { async: false }) as string);
     return <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
