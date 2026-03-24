@@ -13,7 +13,7 @@ Requirements:
 export async function generateArticle(
   messages: Message[],
   config: ApiConfig,
-  onProgress?: (chunk: string) => void
+  onProgress?: (chunk: string) => void | Promise<void>
 ): Promise<string> {
   const formattedMessages = messages
     .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
@@ -71,7 +71,7 @@ export async function generateArticle(
             if (content) {
               fullContent += content;
               if (onProgress) {
-                onProgress(content);
+                await onProgress(content);
               }
             }
           } catch (e) {

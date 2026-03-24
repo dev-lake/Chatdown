@@ -1,32 +1,212 @@
-import type { ChromeMessage, ChromeResponse, Message } from '../types';
+import type {
+  ArticleState,
+  ChromeMessage,
+  ChromeResponse,
+  Message,
+  Platform,
+} from '../types';
 import { getApiConfig, getNotionConfig } from './storage';
 import { generateArticle, testConnection } from './llm-client';
 import { testNotionConnection, exportToNotion } from './notion-client';
 
-// Track if article generation is in progress
-let isGenerating = false;
+const ARTICLE_STATE_KEY_PREFIX = 'articleState:';
+
+function getArticleStateStorageKey(tabId: number): string {
+  return `${ARTICLE_STATE_KEY_PREFIX}${tabId}`;
+}
+
+function createEmptyArticleState(): ArticleState {
+  return {
+    article: '',
+    partialArticle: '',
+    conversationHash: '',
+    messages: [],
+    sourceUrl: '',
+    platform: 'unknown',
+    isGenerating: false,
+  };
+}
+
+async function getArticleStateForTab(tabId: number): Promise<ArticleState> {
+  const key = getArticleStateStorageKey(tabId);
+  const result = await chrome.storage.local.get(key);
+
+  return {
+    ...createEmptyArticleState(),
+    ...(result[key] as Partial<ArticleState> | undefined),
+  };
+}
+
+async function setArticleStateForTab(
+  tabId: number,
+  updates: Partial<ArticleState>
+): Promise<ArticleState> {
+  const key = getArticleStateStorageKey(tabId);
+  const currentState = await getArticleStateForTab(tabId);
+  const nextState: ArticleState = {
+    ...currentState,
+    ...updates,
+  };
+
+  await chrome.storage.local.set({ [key]: nextState });
+  return nextState;
+}
+
+async function clearArticleStateForTab(tabId: number): Promise<void> {
+  await chrome.storage.local.remove(getArticleStateStorageKey(tabId));
+}
+
+async function sendMessageToTab(tabId: number, message: ChromeMessage): Promise<void> {
+  try {
+    await chrome.tabs.sendMessage(tabId, message);
+  } catch (error) {
+    // Ignore when the content script is not available for this tab.
+  }
+}
+
+function buildErrorArticle(errorMessage: string): string {
+  return `# Error\n\n${errorMessage}`;
+}
+
+function appendSourceUrl(article: string, sourceUrl: string): string {
+  if (!sourceUrl) {
+    return article;
+  }
+
+  return `${article}\n\n---\n\n**Source:** [${sourceUrl}](${sourceUrl})`;
+}
+
+function getTabIdFromSender(
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: ChromeResponse) => void
+): number | null {
+  const tabId = sender.tab?.id;
+  if (typeof tabId !== 'number') {
+    sendResponse({ error: 'No tab ID found' });
+    return null;
+  }
+
+  return tabId;
+}
 
 // Simple hash function for conversation content
 function hashMessages(messages: Message[]): string {
-  const content = messages.map(m => `${m.role}:${m.content}`).join('|');
+  const content = messages.map((message) => `${message.role}:${message.content}`).join('|');
   let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    const char = content.charCodeAt(i);
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content.charCodeAt(index);
     hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+    hash &= hash;
   }
+
   return hash.toString(36);
+}
+
+async function publishError(
+  tabId: number,
+  errorMessage: string,
+  extraState: Partial<ArticleState> = {}
+): Promise<void> {
+  const article = buildErrorArticle(errorMessage);
+
+  await setArticleStateForTab(tabId, {
+    article,
+    partialArticle: '',
+    isGenerating: false,
+    ...extraState,
+  });
+
+  await sendMessageToTab(tabId, {
+    action: 'displayArticle',
+    article,
+  });
+}
+
+async function runArticleGeneration(
+  tabId: number,
+  messages: Message[],
+  sourceUrl: string,
+  platform: Platform
+): Promise<ArticleState> {
+  const config = await getApiConfig();
+
+  if (!config) {
+    const errorMessage = 'API configuration not found. Please configure in settings.';
+    await publishError(tabId, errorMessage, {
+      messages,
+      sourceUrl,
+      platform,
+    });
+    throw new Error(errorMessage);
+  }
+
+  const conversationHash = hashMessages(messages);
+  let partialArticle = '';
+
+  await setArticleStateForTab(tabId, {
+    article: '',
+    partialArticle: '',
+    conversationHash,
+    messages,
+    sourceUrl,
+    platform,
+    isGenerating: true,
+  });
+
+  await sendMessageToTab(tabId, { action: 'generatingArticle' });
+
+  try {
+    const article = await generateArticle(messages, config, async (chunk) => {
+      partialArticle += chunk;
+
+      await setArticleStateForTab(tabId, {
+        partialArticle,
+        isGenerating: true,
+      });
+
+      await sendMessageToTab(tabId, {
+        action: 'articleChunk',
+        chunk,
+      });
+    });
+
+    const articleWithSource = appendSourceUrl(article, sourceUrl);
+
+    const nextState = await setArticleStateForTab(tabId, {
+      article: articleWithSource,
+      partialArticle: '',
+      conversationHash,
+      messages,
+      sourceUrl,
+      platform,
+      isGenerating: false,
+    });
+
+    await sendMessageToTab(tabId, {
+      action: 'displayArticle',
+      article: articleWithSource,
+    });
+
+    return nextState;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+
+    await publishError(tabId, errorMessage, {
+      conversationHash,
+      messages,
+      sourceUrl,
+      platform,
+    });
+
+    throw new Error(errorMessage);
+  }
 }
 
 chrome.runtime.onMessage.addListener(
   (message: ChromeMessage, sender, sendResponse: (response: ChromeResponse) => void) => {
-    if (message.action === 'openSidePanel') {
-      handleOpenSidePanel(message, sender, sendResponse);
-      return true;
-    }
-
-    if (message.action === 'generateArticle') {
-      handleGenerateArticle(message, sendResponse);
+    if (message.action === 'startArticleGeneration') {
+      handleStartArticleGeneration(message, sender, sendResponse);
       return true;
     }
 
@@ -35,18 +215,18 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
-    if (message.action === 'getLastArticle') {
-      handleGetLastArticle(sendResponse);
+    if (message.action === 'getArticleState') {
+      handleGetArticleState(sender, sendResponse);
       return true;
     }
 
-    if (message.action === 'isGenerating') {
-      sendResponse({ success: isGenerating });
-      return false;
+    if (message.action === 'regenerateArticle') {
+      handleRegenerateArticle(sender, sendResponse);
+      return true;
     }
 
-    if (message.action === 'regenerateArticle') {
-      handleRegenerateArticle(sendResponse);
+    if (message.action === 'saveArticleContent') {
+      handleSaveArticleContent(message, sender, sendResponse);
       return true;
     }
 
@@ -56,7 +236,7 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.action === 'exportToNotion') {
-      handleExportToNotion(message, sendResponse);
+      handleExportToNotion(message, sender, sendResponse);
       return true;
     }
 
@@ -64,161 +244,74 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
-async function handleOpenSidePanel(
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void clearArticleStateForTab(tabId);
+});
+
+async function handleStartArticleGeneration(
   message: ChromeMessage,
   sender: chrome.runtime.MessageSender,
   sendResponse: (response: ChromeResponse) => void
 ) {
-  try {
-    const tabId = sender.tab?.id;
-    if (!tabId) {
-      sendResponse({ error: 'No tab ID found' });
-      return;
-    }
-
-    // Open the side panel first
-    await chrome.sidePanel.open({ tabId });
-
-    // Small delay to ensure side panel is ready
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    if (!message.messages || message.messages.length === 0) {
-      const errorArticle = '# Error\n\nNo conversation found.';
-      chrome.runtime.sendMessage({
-        action: 'displayArticle',
-        article: errorArticle
-      }).catch(() => {});
-      sendResponse({ error: 'No conversation found.' });
-      return;
-    }
-
-    // Generate hash of current conversation
-    const conversationHash = hashMessages(message.messages);
-    console.log('Conversation hash:', conversationHash);
-
-    // Save messages, source URL, and platform for regeneration (always save, even for cached articles)
-    await chrome.storage.local.set({
-      lastMessages: message.messages,
-      lastSourceUrl: message.sourceUrl || '',
-      lastPlatform: message.platform || 'unknown'
-    });
-
-    // Check if we have a cached article for this conversation (unless force regenerate)
-    if (!message.forceRegenerate) {
-      const cached = await chrome.storage.local.get(['lastGeneratedArticle', 'conversationHash']);
-
-      if (cached.conversationHash === conversationHash && cached.lastGeneratedArticle) {
-        console.log('Using cached article for this conversation');
-        // Send cached article to side panel
-        chrome.runtime.sendMessage({
-          action: 'displayArticle',
-          article: cached.lastGeneratedArticle
-        }).catch(() => {});
-        sendResponse({ article: cached.lastGeneratedArticle });
-        return;
-      }
-    } else {
-      console.log('Force regenerate requested');
-    }
-
-    // No cache or conversation changed, generate new article
-    console.log('Generating new article...');
-
-    // Send loading state to side panel
-    chrome.runtime.sendMessage({ action: 'generatingArticle' }).catch(() => {
-      // Ignore if side panel is not open
-    });
-
-    // Generate the article
-    const config = await getApiConfig();
-
-    if (!config) {
-      const errorArticle = '# Error\n\nAPI configuration not found. Please configure in settings.';
-      chrome.runtime.sendMessage({
-        action: 'displayArticle',
-        article: errorArticle
-      }).catch(() => {});
-      sendResponse({ error: 'API configuration not found. Please configure in settings.' });
-      return;
-    }
-
-    // Clear previous article before starting new generation
-    await chrome.storage.local.set({ lastGeneratedArticle: '', conversationHash });
-    isGenerating = true;
-
-    const article = await generateArticle(message.messages, config, async (chunk) => {
-      // Send each chunk to the side panel as it arrives
-      // Silently ignore if side panel is closed
-      chrome.runtime.sendMessage({
-        action: 'articleChunk',
-        chunk
-      }).catch(() => {});
-
-      // Also save the partial content to storage in real-time
-      const result = await chrome.storage.local.get('lastGeneratedArticle');
-      const currentContent = result.lastGeneratedArticle || '';
-      await chrome.storage.local.set({ lastGeneratedArticle: currentContent + chunk });
-    });
-
-    console.log('Article generated, sending to side panel...');
-
-    isGenerating = false;
-
-    // Append source URL to the article
-    const sourceUrl = message.sourceUrl || '';
-    const articleWithSource = sourceUrl
-      ? `${article}\n\n---\n\n**Source:** [${sourceUrl}](${sourceUrl})`
-      : article;
-
-    // Save the article to storage with conversation hash
-    await chrome.storage.local.set({ lastGeneratedArticle: articleWithSource, conversationHash });
-
-    // Send the article to the side panel
-    chrome.runtime.sendMessage({ action: 'displayArticle', article: articleWithSource }).catch(() => {
-      // Ignore if side panel is closed
-    });
-
-    sendResponse({ article: articleWithSource });
-  } catch (error) {
-    console.error('Error in handleOpenSidePanel:', error);
-    isGenerating = false;
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    const errorArticle = `# Error\n\n${errorMessage}`;
-
-    try {
-      await chrome.runtime.sendMessage({
-        action: 'displayArticle',
-        article: errorArticle
-      });
-    } catch (msgError) {
-      // Ignore if side panel is closed
-    }
-
-    sendResponse({ error: errorMessage });
+  const tabId = getTabIdFromSender(sender, sendResponse);
+  if (tabId === null) {
+    return;
   }
-}
 
-async function handleGenerateArticle(
-  message: ChromeMessage,
-  sendResponse: (response: ChromeResponse) => void
-) {
+  const messages = message.messages ?? [];
+  const sourceUrl = message.sourceUrl ?? '';
+  const platform = message.platform ?? 'unknown';
+
   try {
-    const config = await getApiConfig();
-
-    if (!config) {
-      sendResponse({ error: 'API configuration not found. Please configure in settings.' });
+    if (messages.length === 0) {
+      const errorMessage = 'No conversation found.';
+      await publishError(tabId, errorMessage, {
+        messages,
+        sourceUrl,
+        platform,
+      });
+      sendResponse({ error: errorMessage });
       return;
     }
 
-    if (!message.messages || message.messages.length === 0) {
-      sendResponse({ error: 'No conversation found.' });
+    const conversationHash = hashMessages(messages);
+    const currentState = await getArticleStateForTab(tabId);
+
+    await setArticleStateForTab(tabId, {
+      conversationHash,
+      messages,
+      sourceUrl,
+      platform,
+    });
+
+    if (
+      !message.forceRegenerate &&
+      currentState.conversationHash === conversationHash &&
+      currentState.article
+    ) {
+      await sendMessageToTab(tabId, {
+        action: 'displayArticle',
+        article: currentState.article,
+      });
+
+      sendResponse({
+        article: currentState.article,
+        state: {
+          ...currentState,
+          messages,
+          sourceUrl,
+          platform,
+        },
+      });
       return;
     }
 
-    const article = await generateArticle(message.messages, config);
-    sendResponse({ article });
+    const nextState = await runArticleGeneration(tabId, messages, sourceUrl, platform);
+    sendResponse({ article: nextState.article, state: nextState });
   } catch (error) {
-    sendResponse({ error: error instanceof Error ? error.message : 'Unknown error occurred' });
+    sendResponse({
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+    });
   }
 }
 
@@ -235,93 +328,98 @@ async function handleTestConnection(
     const success = await testConnection(message.config);
     sendResponse({ success });
   } catch (error) {
-    sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
   }
 }
 
-async function handleGetLastArticle(
+async function handleGetArticleState(
+  sender: chrome.runtime.MessageSender,
   sendResponse: (response: ChromeResponse) => void
 ) {
+  const tabId = getTabIdFromSender(sender, sendResponse);
+  if (tabId === null) {
+    return;
+  }
+
   try {
-    const result = await chrome.storage.local.get('lastGeneratedArticle');
-    console.log('Retrieved last article from storage:', result);
-    sendResponse({ article: result.lastGeneratedArticle || undefined });
+    const state = await getArticleStateForTab(tabId);
+    sendResponse({
+      article: state.isGenerating ? state.partialArticle || state.article : state.article,
+      state,
+    });
   } catch (error) {
-    console.error('Error getting last article:', error);
-    sendResponse({ article: undefined });
+    sendResponse({ error: 'Failed to load article state.' });
   }
 }
 
 async function handleRegenerateArticle(
+  sender: chrome.runtime.MessageSender,
   sendResponse: (response: ChromeResponse) => void
 ) {
+  const tabId = getTabIdFromSender(sender, sendResponse);
+  if (tabId === null) {
+    return;
+  }
+
   try {
-    // Get stored messages and source URL
-    const stored = await chrome.storage.local.get(['lastMessages', 'lastSourceUrl']);
+    const currentState = await getArticleStateForTab(tabId);
 
-    if (!stored.lastMessages || stored.lastMessages.length === 0) {
-      sendResponse({ error: 'No conversation found to regenerate.' });
+    if (currentState.messages.length === 0) {
+      const errorMessage = 'No conversation found to regenerate.';
+      await publishError(tabId, errorMessage);
+      sendResponse({ error: errorMessage });
       return;
     }
 
-    console.log('Regenerating article...');
+    const nextState = await runArticleGeneration(
+      tabId,
+      currentState.messages,
+      currentState.sourceUrl,
+      currentState.platform
+    );
 
-    // Send loading state to side panel
-    chrome.runtime.sendMessage({ action: 'generatingArticle' }).catch(() => {});
+    sendResponse({ article: nextState.article, state: nextState });
+  } catch (error) {
+    sendResponse({
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+    });
+  }
+}
 
-    // Get API config
-    const config = await getApiConfig();
-    if (!config) {
-      const errorArticle = '# Error\n\nAPI configuration not found. Please configure in settings.';
-      chrome.runtime.sendMessage({
-        action: 'displayArticle',
-        article: errorArticle
-      }).catch(() => {});
-      sendResponse({ error: 'API configuration not found.' });
-      return;
-    }
+async function handleSaveArticleContent(
+  message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: ChromeResponse) => void
+) {
+  const tabId = getTabIdFromSender(sender, sendResponse);
+  if (tabId === null) {
+    return;
+  }
 
-    // Clear previous article
-    const conversationHash = hashMessages(stored.lastMessages);
-    await chrome.storage.local.set({ lastGeneratedArticle: '', conversationHash });
-    isGenerating = true;
+  if (!message.articleContent) {
+    sendResponse({ error: 'No article content to save.' });
+    return;
+  }
 
-    // Generate new article
-    const article = await generateArticle(stored.lastMessages, config, async (chunk) => {
-      chrome.runtime.sendMessage({
-        action: 'articleChunk',
-        chunk
-      }).catch(() => {});
-
-      const result = await chrome.storage.local.get('lastGeneratedArticle');
-      const currentContent = result.lastGeneratedArticle || '';
-      await chrome.storage.local.set({ lastGeneratedArticle: currentContent + chunk });
+  try {
+    const state = await setArticleStateForTab(tabId, {
+      article: message.articleContent,
+      partialArticle: '',
+      isGenerating: false,
     });
 
-    isGenerating = false;
-
-    // Append source URL
-    const sourceUrl = stored.lastSourceUrl || '';
-    const articleWithSource = sourceUrl
-      ? `${article}\n\n---\n\n**Source:** [${sourceUrl}](${sourceUrl})`
-      : article;
-
-    // Save and send
-    await chrome.storage.local.set({ lastGeneratedArticle: articleWithSource, conversationHash });
-    chrome.runtime.sendMessage({ action: 'displayArticle', article: articleWithSource }).catch(() => {});
-    sendResponse({ article: articleWithSource });
+    sendResponse({
+      success: true,
+      article: state.article,
+      state,
+    });
   } catch (error) {
-    console.error('Error regenerating article:', error);
-    isGenerating = false;
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    const errorArticle = `# Error\n\n${errorMessage}`;
-
-    chrome.runtime.sendMessage({
-      action: 'displayArticle',
-      article: errorArticle
-    }).catch(() => {});
-
-    sendResponse({ error: errorMessage });
+    sendResponse({
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+    });
   }
 }
 
@@ -339,29 +437,39 @@ async function handleTestNotionConnection(
 
     if (result.success) {
       sendResponse({ success: true });
-    } else if (result.missingProperties && result.missingProperties.length > 0) {
-      sendResponse({
-        success: false,
-        missingProperties: result.missingProperties
-      });
-    } else {
-      sendResponse({
-        success: false,
-        error: result.error || 'Connection failed'
-      });
+      return;
     }
+
+    if (result.missingProperties && result.missingProperties.length > 0) {
+      sendResponse({
+        success: false,
+        missingProperties: result.missingProperties,
+      });
+      return;
+    }
+
+    sendResponse({
+      success: false,
+      error: result.error || 'Connection failed',
+    });
   } catch (error) {
     sendResponse({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 }
 
 async function handleExportToNotion(
   message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
   sendResponse: (response: ChromeResponse) => void
 ) {
+  const tabId = getTabIdFromSender(sender, sendResponse);
+  if (tabId === null) {
+    return;
+  }
+
   try {
     const config = await getNotionConfig();
 
@@ -375,27 +483,25 @@ async function handleExportToNotion(
       return;
     }
 
-    // Retrieve sourceUrl and platform from storage
-    const stored = await chrome.storage.local.get(['lastSourceUrl', 'lastPlatform']);
-    const sourceUrl = stored.lastSourceUrl || '';
-    const platform = stored.lastPlatform || 'unknown';
+    const state = await getArticleStateForTab(tabId);
 
     const result = await exportToNotion(
       config,
       message.articleTitle,
       message.articleContent,
-      sourceUrl,
-      platform
+      state.sourceUrl,
+      state.platform
     );
 
     if (result.success) {
       sendResponse({ success: true, article: result.pageUrl });
-    } else {
-      sendResponse({ error: result.error });
+      return;
     }
+
+    sendResponse({ error: result.error });
   } catch (error) {
     sendResponse({
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
     });
   }
 }

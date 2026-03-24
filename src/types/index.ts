@@ -3,6 +3,16 @@ export interface Message {
   content: string;
 }
 
+export interface ArticleState {
+  article: string;
+  partialArticle: string;
+  conversationHash: string;
+  messages: Message[];
+  sourceUrl: string;
+  platform: Platform;
+  isGenerating: boolean;
+}
+
 export interface ApiConfig {
   apiBaseUrl: string;
   apiKey: string;
@@ -21,7 +31,17 @@ export interface NotionBlock {
 }
 
 export interface ChromeMessage {
-  action: 'generateArticle' | 'testConnection' | 'displayArticle' | 'generatingArticle' | 'openSidePanel' | 'articleChunk' | 'getLastArticle' | 'isGenerating' | 'regenerateArticle' | 'exportToNotion' | 'testNotionConnection';
+  action:
+    | 'startArticleGeneration'
+    | 'testConnection'
+    | 'displayArticle'
+    | 'generatingArticle'
+    | 'articleChunk'
+    | 'getArticleState'
+    | 'regenerateArticle'
+    | 'exportToNotion'
+    | 'testNotionConnection'
+    | 'saveArticleContent';
   messages?: Message[];
   config?: ApiConfig;
   article?: string;
@@ -39,6 +59,7 @@ export interface ChromeResponse {
   error?: string;
   success?: boolean;
   missingProperties?: string[];
+  state?: ArticleState;
 }
 
 export type Platform = 'chatgpt' | 'gemini' | 'deepseek' | 'unknown';
