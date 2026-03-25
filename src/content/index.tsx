@@ -1,4 +1,5 @@
 import { createRoot, type Root } from 'react-dom/client';
+import { I18nProvider } from '../i18n/react';
 import App from './App';
 import OverlayApp from './OverlayApp';
 import './index.css';
@@ -43,7 +44,11 @@ function ensureOverlayRoot() {
   }
 
   overlayRoot = createRoot(overlayContainer);
-  overlayRoot.render(<OverlayApp />);
+  overlayRoot.render(
+    <I18nProvider>
+      <OverlayApp />
+    </I18nProvider>
+  );
 }
 
 function getVisibleRect(element: Element): DOMRect | null {
@@ -299,7 +304,11 @@ function init() {
     targetElement.appendChild(container);
   }
 
-  createRoot(container).render(<App />);
+  createRoot(container).render(
+    <I18nProvider>
+      <App />
+    </I18nProvider>
+  );
   console.log('[Chatdown] Button rendered successfully');
 }
 

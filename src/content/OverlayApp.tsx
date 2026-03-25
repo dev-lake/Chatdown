@@ -8,6 +8,8 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { marked } from 'marked';
 import type { ArticleState, ChromeMessage, GenerationMode } from '../types';
+import type { TranslateFn } from '../i18n/core';
+import { useI18n } from '../i18n/react';
 import {
   CHATDOWN_OPEN_OVERLAY_EVENT,
   CHATDOWN_SHOW_ERROR_EVENT,
@@ -42,8 +44,8 @@ interface ResizeState {
   origin: WindowRect;
 }
 
-function buildErrorArticle(message: string): string {
-  return `# Error\n\n${message}`;
+function buildErrorArticle(errorTitle: string, message: string): string {
+  return `# ${errorTitle}\n\n${message}`;
 }
 
 function isHtmlContent(value: string): boolean {
@@ -184,31 +186,41 @@ function applyArticleStateToView(
   setStreamingContent('');
 }
 
-function getOverlayTitle(articleState: ArticleState | null, isEditing: boolean, markdownContent: string): string {
+function getOverlayTitle(
+  articleState: ArticleState | null,
+  isEditing: boolean,
+  markdownContent: string,
+  t: TranslateFn
+): string {
   if (isEditing) {
-    return 'Editing article';
+    return t('overlayTitleEditing');
   }
 
   if (articleState?.phase === 'summarizing_rounds') {
-    return 'Preparing round summaries';
+    return t('overlayTitlePreparingSummaries');
   }
 
   if (articleState?.phase === 'selecting_rounds') {
-    return 'Choose conversation rounds';
+    return t('overlayTitleChooseRounds');
   }
 
   if (articleState?.phase === 'generating') {
-    return 'Generating article';
+    return t('overlayTitleGenerating');
+  }
+
+  if (articleState?.phase === 'error') {
+    return t('commonErrorTitle');
   }
 
   if (markdownContent) {
-    return 'Article ready';
+    return t('overlayTitleReady');
   }
 
-  return 'Article workspace';
+  return t('overlayTitleWorkspace');
 }
 
 export default function OverlayApp() {
+  const { locale, t } = useI18n();
   const [visible, setVisible] = useState(false);
   const [windowRect, setWindowRect] = useState<WindowRect>(() => getDefaultWindowRect());
   const [articleState, setArticleState] = useState<ArticleState | null>(null);
@@ -228,7 +240,7 @@ export default function OverlayApp() {
     extensions: [
       StarterKit,
       Placeholder.configure({
-        placeholder: 'Start editing...',
+        placeholder: t('overlayPlaceholderStartEditing'),
       }),
       Link.configure({
         openOnClick: false,
@@ -249,7 +261,7 @@ export default function OverlayApp() {
         class: 'chatdown-editor',
       },
     },
-  });
+  }, [locale]);
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
     if (dragStateRef.current) {
@@ -331,9 +343,22 @@ export default function OverlayApp() {
 
     const handleShowError = (event: Event) => {
       const detail = (event as CustomEvent<{ message: string }>).detail;
+      const errorMessage = detail?.message || t('commonUnknownError');
       setVisible(true);
-      setArticleState(null);
-      setMarkdownContent(buildErrorArticle(detail?.message || 'Unknown error'));
+      setArticleState({
+        article: buildErrorArticle(t('commonErrorTitle'), errorMessage),
+        partialArticle: '',
+        conversationHash: '',
+        messages: [],
+        sourceUrl: '',
+        platform: 'unknown',
+        phase: 'error',
+        mode: null,
+        rounds: [],
+        selectedRoundIds: [],
+        notice: '',
+      });
+      setMarkdownContent(buildErrorArticle(t('commonErrorTitle'), errorMessage));
       setStreamingContent('');
       setIsEditing(false);
     };
@@ -356,7 +381,7 @@ export default function OverlayApp() {
       stopPointerInteraction();
       emitChatdownVisibilityChange(false);
     };
-  }, [stopPointerInteraction]);
+  }, [stopPointerInteraction, t]);
 
   useEffect(() => {
     emitChatdownVisibilityChange(visible);
@@ -440,7 +465,7 @@ export default function OverlayApp() {
     }
 
     await navigator.clipboard.writeText(markdownContent);
-    window.alert('Copied to clipboard.');
+    window.alert(t('overlayCopiedToClipboard'));
   };
 
   const handleDownload = () => {
@@ -494,10 +519,10 @@ export default function OverlayApp() {
       }
 
       if (response?.error && !response.state) {
-        window.alert(`Failed to save article: ${response.error}`);
+        window.alert(t('overlayFailedToSaveWithReason', { error: response.error }));
       }
     } catch {
-      window.alert('Failed to save article.');
+      window.alert(t('overlayFailedToSave'));
     }
   };
 
@@ -524,10 +549,10 @@ export default function OverlayApp() {
       }
 
       if (response?.error && !response.state) {
-        window.alert(`Failed to regenerate: ${response.error}`);
+        window.alert(t('overlayFailedToRegenerateWithReason', { error: response.error }));
       }
     } catch {
-      window.alert('Failed to regenerate article.');
+      window.alert(t('overlayFailedToRegenerate'));
     }
   };
 
@@ -553,10 +578,10 @@ export default function OverlayApp() {
       }
 
       if (response?.error && !response.state) {
-        window.alert(`Failed to generate article: ${response.error}`);
+        window.alert(t('overlayFailedToGenerateWithReason', { error: response.error }));
       }
     } catch {
-      window.alert('Failed to generate article.');
+      window.alert(t('overlayFailedToGenerate'));
     }
   };
 
@@ -569,7 +594,9 @@ export default function OverlayApp() {
     setShowExportMenu(false);
 
     const titleMatch = markdownContent.match(/^#\s+(.+)$/m);
-    const title = titleMatch ? titleMatch[1] : `Chatdown Article ${new Date().toLocaleDateString()}`;
+    const title = titleMatch
+      ? titleMatch[1]
+      : t('overlayDefaultArticleTitle', { date: new Date().toLocaleDateString(locale) });
 
     try {
       const response = await chrome.runtime.sendMessage({
@@ -579,12 +606,12 @@ export default function OverlayApp() {
       });
 
       if (response?.success) {
-        window.alert(`Exported to Notion successfully.\n${response.article || ''}`);
+        window.alert(t('overlayExportSuccess', { url: response.article || '' }));
       } else {
-        window.alert(`Export failed: ${response?.error || 'Unknown error'}`);
+        window.alert(t('overlayExportFailed', { error: response?.error || t('commonUnknownError') }));
       }
     } catch {
-      window.alert('Export to Notion failed.');
+      window.alert(t('overlayExportToNotionFailed'));
     } finally {
       setExporting(false);
     }
@@ -617,7 +644,7 @@ export default function OverlayApp() {
     setIsEditing(false);
   };
 
-  const title = getOverlayTitle(articleState, isEditing, markdownContent);
+  const title = getOverlayTitle(articleState, isEditing, markdownContent, t);
 
   const renderSelectionBody = () => {
     if (!articleState) {
@@ -627,9 +654,9 @@ export default function OverlayApp() {
     return (
       <div className="chatdown-selection">
         <div className="chatdown-selection__header">
-          <span className="chatdown-selection__eyebrow">Partial selection</span>
-          <h2>Choose the conversation rounds to summarize</h2>
-          <p>Select one or more rounds. Chatdown will generate the article using only the original messages from the rounds you choose.</p>
+          <span className="chatdown-selection__eyebrow">{t('overlaySelectionEyebrow')}</span>
+          <h2>{t('overlaySelectionHeading')}</h2>
+          <p>{t('overlaySelectionDescription')}</p>
         </div>
 
         <div className="chatdown-selection__list">
@@ -654,7 +681,7 @@ export default function OverlayApp() {
                     {selected ? '☑' : '☐'}
                   </span>
                   <div className="chatdown-round-card__meta">
-                    <strong>Round {round.index}</strong>
+                    <strong>{t('overlayRoundLabel', { index: round.index })}</strong>
                     <span>{round.summary}</span>
                   </div>
                 </div>
@@ -674,7 +701,7 @@ export default function OverlayApp() {
             onClick={handleGenerateFromSelection}
             disabled={selectedRoundIds.length === 0}
           >
-            Generate
+            {t('commonGenerate')}
           </button>
         </div>
       </div>
@@ -685,8 +712,8 @@ export default function OverlayApp() {
     if (articleState?.phase === 'summarizing_rounds') {
       return (
         <div className="chatdown-empty-state">
-          <h2>Preparing round summaries...</h2>
-          <p>Chatdown is generating one-line summaries for each conversation round.</p>
+          <h2>{t('overlaySummariesHeading')}</h2>
+          <p>{t('overlaySummariesDescription')}</p>
         </div>
       );
     }
@@ -706,8 +733,8 @@ export default function OverlayApp() {
             renderMarkdown(streamingContent)
           ) : (
             <div className="chatdown-empty-state">
-              <h2>Preparing article...</h2>
-              <p>Waiting for the model to return the first chunk.</p>
+              <h2>{t('overlayPreparingArticleHeading')}</h2>
+              <p>{t('overlayPreparingArticleDescription')}</p>
             </div>
           )}
         </div>
@@ -717,8 +744,8 @@ export default function OverlayApp() {
     if (!markdownContent) {
       return (
         <div className="chatdown-empty-state">
-          <h2>No article yet</h2>
-          <p>Use Chatdown to generate from the full conversation or choose specific rounds first.</p>
+          <h2>{t('overlayNoArticleHeading')}</h2>
+          <p>{t('overlayNoArticleDescription')}</p>
         </div>
       );
     }
@@ -744,11 +771,11 @@ export default function OverlayApp() {
 
   return (
     <div className="chatdown-overlay">
-      <section className="chatdown-window" style={overlayStyle}>
+      <section className="chatdown-window" style={overlayStyle} lang={locale}>
         <header className="chatdown-window__header">
           <div className="chatdown-window__topbar">
             <div className="chatdown-window__drag-region" onPointerDown={startDrag}>
-              <div className="chatdown-window__eyebrow">Chatdown</div>
+              <div className="chatdown-window__eyebrow">{t('appName')}</div>
               <div className="chatdown-window__title">{title}</div>
             </div>
 
@@ -756,9 +783,9 @@ export default function OverlayApp() {
               type="button"
               className="chatdown-icon-button"
               onClick={closeOverlay}
-              title="Close"
+              title={t('commonClose')}
             >
-              Close
+              {t('commonClose')}
             </button>
           </div>
 
@@ -771,27 +798,27 @@ export default function OverlayApp() {
           <div className="chatdown-window__toolbar">
             {isEditing ? (
               <>
-                <span className="chatdown-status">Edit mode</span>
+                <span className="chatdown-status">{t('overlayStatusEditMode')}</span>
                 <div className="chatdown-toolbar__buttons">
                   <button type="button" className="chatdown-secondary-button" onClick={handleCancel}>
-                    Cancel
+                    {t('commonCancel')}
                   </button>
                   <button type="button" className="chatdown-primary-button" onClick={handleSave}>
-                    Save
+                    {t('commonSave')}
                   </button>
                 </div>
               </>
             ) : articleState?.phase === 'summarizing_rounds' ? (
-              <span className="chatdown-status">Generating one-line summaries for the conversation rounds...</span>
+              <span className="chatdown-status">{t('overlayStatusSummarizing')}</span>
             ) : articleState?.phase === 'selecting_rounds' ? (
-              <span className="chatdown-status">Choose the rounds you want Chatdown to use.</span>
+              <span className="chatdown-status">{t('overlayStatusSelecting')}</span>
             ) : articleState?.phase === 'generating' ? (
-              <span className="chatdown-status">Streaming article content...</span>
+              <span className="chatdown-status">{t('overlayStatusGenerating')}</span>
             ) : exporting ? (
-              <span className="chatdown-status">Exporting to Notion...</span>
+              <span className="chatdown-status">{t('overlayStatusExporting')}</span>
             ) : markdownContent ? (
               <>
-                <span className="chatdown-status">Ready</span>
+                <span className="chatdown-status">{t('commonReady')}</span>
                 <div className="chatdown-toolbar__buttons">
                   <div className="chatdown-menu" ref={regenerateMenuRef}>
                     <button
@@ -799,7 +826,7 @@ export default function OverlayApp() {
                       className="chatdown-secondary-button"
                       onClick={() => setShowRegenerateMenu((current) => !current)}
                     >
-                      Regenerate
+                      {t('commonRegenerate')}
                     </button>
 
                     {showRegenerateMenu ? (
@@ -809,20 +836,20 @@ export default function OverlayApp() {
                           className="chatdown-menu__item"
                           onClick={() => void handleRegenerate('full')}
                         >
-                          Full conversation
+                          {t('contentModeFullTitle')}
                         </button>
                         <button
                           type="button"
                           className="chatdown-menu__item"
                           onClick={() => void handleRegenerate('partial')}
                         >
-                          Selected rounds
+                          {t('contentModePartialTitle')}
                         </button>
                       </div>
                     ) : null}
                   </div>
                   <button type="button" className="chatdown-secondary-button" onClick={handleEdit}>
-                    Edit
+                    {t('commonEdit')}
                   </button>
                   <div className="chatdown-menu" ref={exportMenuRef}>
                     <button
@@ -830,19 +857,19 @@ export default function OverlayApp() {
                       className="chatdown-secondary-button"
                       onClick={() => setShowExportMenu((current) => !current)}
                     >
-                      Export
+                      {t('commonExport')}
                     </button>
 
                     {showExportMenu ? (
                       <div className="chatdown-menu__content">
                         <button type="button" className="chatdown-menu__item" onClick={handleCopy}>
-                          Copy to clipboard
+                          {t('overlayCopyToClipboard')}
                         </button>
                         <button type="button" className="chatdown-menu__item" onClick={handleDownload}>
-                          Download Markdown
+                          {t('overlayDownloadMarkdown')}
                         </button>
                         <button type="button" className="chatdown-menu__item" onClick={handleExportToNotion}>
-                          Export to Notion
+                          {t('overlayExportToNotion')}
                         </button>
                       </div>
                     ) : null}
@@ -850,7 +877,7 @@ export default function OverlayApp() {
                 </div>
               </>
             ) : (
-              <span className="chatdown-status">Choose a Chatdown generation mode from the button in the chat header.</span>
+              <span className="chatdown-status">{t('overlayStatusChooseGenerationMode')}</span>
             )}
           </div>
         </header>
@@ -863,29 +890,29 @@ export default function OverlayApp() {
           type="button"
           className="chatdown-window__resize-edge chatdown-window__resize-edge--top"
           onPointerDown={(event) => startResize(event, 'top')}
-          aria-label="Resize window from top edge"
-          title="Resize from top edge"
+          aria-label={t('overlayResizeTop')}
+          title={t('overlayResizeTop')}
         />
         <button
           type="button"
           className="chatdown-window__resize-edge chatdown-window__resize-edge--right"
           onPointerDown={(event) => startResize(event, 'right')}
-          aria-label="Resize window from right edge"
-          title="Resize from right edge"
+          aria-label={t('overlayResizeRight')}
+          title={t('overlayResizeRight')}
         />
         <button
           type="button"
           className="chatdown-window__resize-edge chatdown-window__resize-edge--bottom"
           onPointerDown={(event) => startResize(event, 'bottom')}
-          aria-label="Resize window from bottom edge"
-          title="Resize from bottom edge"
+          aria-label={t('overlayResizeBottom')}
+          title={t('overlayResizeBottom')}
         />
         <button
           type="button"
           className="chatdown-window__resize-edge chatdown-window__resize-edge--left"
           onPointerDown={(event) => startResize(event, 'left')}
-          aria-label="Resize window from left edge"
-          title="Resize from left edge"
+          aria-label={t('overlayResizeLeft')}
+          title={t('overlayResizeLeft')}
         />
       </section>
     </div>

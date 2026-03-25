@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "Chatdown"
+  },
+  "extDescription": {
+    "message": "將 AI 聊天對話轉換為 Markdown 文章"
+  },
+  "actionTitle": {
+    "message": "開啟 Chatdown"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "Chatdown"
+  },
+  "extDescription": {
+    "message": "AI チャットの会話を Markdown 記事に変換します"
+  },
+  "actionTitle": {
+    "message": "Chatdown を開く"
+  }
+}

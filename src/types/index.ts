@@ -3,6 +3,9 @@ export interface Message {
   content: string;
 }
 
+export type Locale = 'en' | 'zh-CN' | 'zh-TW' | 'ja';
+export type LocalePreference = 'auto' | Locale;
+
 export type WorkflowPhase = 'idle' | 'summarizing_rounds' | 'selecting_rounds' | 'generating' | 'ready' | 'error';
 export type GenerationMode = 'full' | 'partial';
 

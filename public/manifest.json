@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Chatdown",
+  "default_locale": "en",
+  "name": "__MSG_extName__",
   "version": "1.0.0",
-  "description": "Convert AI chat conversations into Markdown articles",
+  "description": "__MSG_extDescription__",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "https://chat.openai.com/*",
@@ -26,7 +27,8 @@
     "run_at": "document_idle"
   }],
   "action": {
-    "default_popup": "src/popup/index.html"
+    "default_popup": "src/popup/index.html",
+    "default_title": "__MSG_actionTitle__"
   },
   "options_page": "src/settings/index.html",
   "icons": {

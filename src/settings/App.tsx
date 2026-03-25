@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
-import type { ApiConfig, ChromeMessage, ChromeResponse } from '../types';
+import { useEffect, useState } from 'react';
+import type { ApiConfig, ChromeMessage, ChromeResponse, LocalePreference } from '../types';
+import { LOCALE_OPTIONS } from '../i18n/core';
+import { useI18n } from '../i18n/react';
 
 export default function App() {
+  const { locale, preference, setPreference, t } = useI18n();
   const [apiBaseUrl, setApiBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [modelName, setModelName] = useState('');
@@ -15,8 +18,18 @@ export default function App() {
   const [showNotionToken, setShowNotionToken] = useState(false);
 
   useEffect(() => {
-    loadSettings();
+    void loadSettings();
   }, []);
+
+  useEffect(() => {
+    document.title = t('settingsDocumentTitle');
+    document.documentElement.lang = locale;
+  }, [locale, t]);
+
+  useEffect(() => {
+    setMessage(null);
+    setNotionMessage(null);
+  }, [locale]);
 
   const loadSettings = async () => {
     const result = await chrome.storage.local.get([
@@ -24,18 +37,29 @@ export default function App() {
       'apiKey',
       'modelName',
       'notionIntegrationToken',
-      'notionDatabaseId'
+      'notionDatabaseId',
     ]);
-    if (result.apiBaseUrl) setApiBaseUrl(result.apiBaseUrl);
-    if (result.apiKey) setApiKey(result.apiKey);
-    if (result.modelName) setModelName(result.modelName);
-    if (result.notionIntegrationToken) setNotionToken(result.notionIntegrationToken);
-    if (result.notionDatabaseId) setNotionDatabaseId(result.notionDatabaseId);
+
+    if (result.apiBaseUrl) {
+      setApiBaseUrl(result.apiBaseUrl);
+    }
+    if (result.apiKey) {
+      setApiKey(result.apiKey);
+    }
+    if (result.modelName) {
+      setModelName(result.modelName);
+    }
+    if (result.notionIntegrationToken) {
+      setNotionToken(result.notionIntegrationToken);
+    }
+    if (result.notionDatabaseId) {
+      setNotionDatabaseId(result.notionDatabaseId);
+    }
   };
 
   const handleTestConnection = async () => {
     if (!apiBaseUrl || !apiKey || !modelName) {
-      setMessage({ type: 'error', text: 'Please fill in all fields' });
+      setMessage({ type: 'error', text: t('settingsValidationRequired') });
       return;
     }
 
@@ -43,31 +67,32 @@ export default function App() {
     setMessage(null);
 
     const config: ApiConfig = { apiBaseUrl, apiKey, modelName };
-    const message: ChromeMessage = {
+    const request: ChromeMessage = {
       action: 'testConnection',
       config,
     };
 
-    chrome.runtime.sendMessage(message, (response: ChromeResponse) => {
+    chrome.runtime.sendMessage(request, (response: ChromeResponse) => {
       setTesting(false);
+
       if (response.success) {
-        setMessage({ type: 'success', text: 'Connection successful!' });
+        setMessage({ type: 'success', text: t('settingsConnectionSuccess') });
       } else {
-        setMessage({ type: 'error', text: response.error || 'Connection failed' });
+        setMessage({ type: 'error', text: response.error || t('settingsConnectionFailed') });
       }
     });
   };
 
   const handleTestNotionConnection = async () => {
     if (!notionToken || !notionDatabaseId) {
-      setNotionMessage({ type: 'error', text: 'Please fill in Notion configuration' });
+      setNotionMessage({ type: 'error', text: t('settingsNotionValidationRequired') });
       return;
     }
 
     setTestingNotion(true);
     setNotionMessage(null);
 
-    const message: ChromeMessage = {
+    const request: ChromeMessage = {
       action: 'testNotionConnection',
       notionConfig: {
         integrationToken: notionToken,
@@ -75,33 +100,42 @@ export default function App() {
       },
     };
 
-    chrome.runtime.sendMessage(message, (response: ChromeResponse) => {
+    chrome.runtime.sendMessage(request, (response: ChromeResponse) => {
       setTestingNotion(false);
+
       if (response.success) {
-        setNotionMessage({ type: 'success', text: '✅ Notion connection successful! All required properties are configured.' });
-      } else if (response.missingProperties && response.missingProperties.length > 0) {
+        setNotionMessage({ type: 'success', text: t('settingsNotionConnectionSuccess') });
+        return;
+      }
+
+      if (response.missingProperties && response.missingProperties.length > 0) {
         const propertyTypes: Record<string, string> = {
-          source: 'URL',
-          platform: 'Multi-select',
-          tag: 'Multi-select',
-          timestamp: 'Date'
+          source: t('settingsPropertyTypeUrl'),
+          platform: t('settingsPropertyTypeMultiSelect'),
+          tag: t('settingsPropertyTypeMultiSelect'),
+          timestamp: t('settingsPropertyTypeDate'),
         };
         const details = response.missingProperties
-          .map(prop => `• ${prop} (${propertyTypes[prop] || 'Unknown'})`)
+          .map((property) => t('settingsMissingPropertyLine', {
+            property,
+            type: propertyTypes[property] || t('settingsPropertyTypeUnknown'),
+          }))
           .join('\n');
+
         setNotionMessage({
           type: 'error',
-          text: `❌ Missing required properties in your Notion database:\n\n${details}\n\nPlease add these properties to your database and try again. See the "Required Database Properties" section above for details.`
+          text: `${t('settingsNotionMissingPropsIntro')}\n\n${details}\n\n${t('settingsNotionMissingPropsOutro')}`,
         });
-      } else {
-        setNotionMessage({ type: 'error', text: response.error || 'Notion connection failed' });
+        return;
       }
+
+      setNotionMessage({ type: 'error', text: response.error || t('settingsNotionConnectionFailed') });
     });
   };
 
   const handleSave = async () => {
     if (!apiBaseUrl || !apiKey || !modelName) {
-      setMessage({ type: 'error', text: 'Please fill in all fields' });
+      setMessage({ type: 'error', text: t('settingsValidationRequired') });
       return;
     }
 
@@ -113,66 +147,84 @@ export default function App() {
       apiKey,
       modelName,
       notionIntegrationToken: notionToken,
-      notionDatabaseId: notionDatabaseId,
+      notionDatabaseId,
     });
 
     setSaving(false);
-    setMessage({ type: 'success', text: 'Settings saved successfully!' });
+    setMessage({ type: 'success', text: t('settingsSaved') });
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-8" lang={locale}>
       <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-8">
-        <h1 className="text-3xl font-bold mb-2">Chatdown Settings</h1>
+        <h1 className="text-3xl font-bold mb-2">{t('settingsHeading')}</h1>
         <p className="text-gray-600 mb-6">
-          Configure your LLM API settings to generate articles from conversations
+          {t('settingsDescription')}
         </p>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">API Base URL</label>
+            <label className="block text-sm font-medium mb-1">{t('settingsLanguageLabel')}</label>
+            <select
+              value={preference}
+              onChange={(event) => void setPreference(event.target.value as LocalePreference)}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {LOCALE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {t('settingsLanguageHelp')}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">{t('settingsApiBaseUrlLabel')}</label>
             <input
               type="text"
               value={apiBaseUrl}
-              onChange={(e) => setApiBaseUrl(e.target.value)}
+              onChange={(event) => setApiBaseUrl(event.target.value)}
               placeholder="https://api.openai.com"
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              OpenAI-compatible API endpoint (e.g., OpenAI, Azure OpenAI, Ollama)
+              {t('settingsApiBaseUrlHelp')}
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">API Key</label>
+            <label className="block text-sm font-medium mb-1">{t('settingsApiKeyLabel')}</label>
             <input
               type="password"
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(event) => setApiKey(event.target.value)}
               placeholder="sk-..."
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Your API key (stored locally, never transmitted except to your configured endpoint)
+              {t('settingsApiKeyHelp')}
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Model Name</label>
+            <label className="block text-sm font-medium mb-1">{t('settingsModelNameLabel')}</label>
             <input
               type="text"
               value={modelName}
-              onChange={(e) => setModelName(e.target.value)}
+              onChange={(event) => setModelName(event.target.value)}
               placeholder="gpt-4o-mini"
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Model identifier (e.g., gpt-4o-mini, gpt-4, claude-3-sonnet)
+              {t('settingsModelNameHelp')}
             </p>
           </div>
         </div>
 
-        {message && (
+        {message ? (
           <div
             className={`mt-4 p-3 rounded ${
               message.type === 'success'
@@ -182,7 +234,7 @@ export default function App() {
           >
             {message.text}
           </div>
-        )}
+        ) : null}
 
         <div className="flex gap-3 mt-6">
           <button
@@ -190,22 +242,22 @@ export default function App() {
             disabled={testing}
             className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors disabled:opacity-50"
           >
-            {testing ? 'Testing...' : 'Test Connection'}
+            {testing ? t('settingsTesting') : t('settingsTestConnection')}
           </button>
         </div>
 
         <div className="mt-8 pt-8 border-t">
-          <h2 className="text-2xl font-bold mb-2">Notion Integration (Optional)</h2>
+          <h2 className="text-2xl font-bold mb-2">{t('settingsNotionHeading')}</h2>
           <p className="text-gray-600 mb-4">
-            Export articles directly to your Notion workspace
+            {t('settingsNotionDescription')}
           </p>
 
-          {/* Setup Instructions */}
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h3 className="text-sm font-semibold text-blue-900 mb-2">📖 Setup Guide</h3>
+            <h3 className="text-sm font-semibold text-blue-900 mb-2">{t('settingsNotionGuideTitle')}</h3>
             <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
               <li>
-                <span className="font-medium">Create Integration:</span> Visit{' '}
+                <span className="font-medium">{t('settingsNotionGuideCreateIntegration')}</span>{' '}
+                {t('settingsNotionGuideCreateIntegrationBody')}{' '}
                 <a
                   href="https://www.notion.so/my-integrations"
                   target="_blank"
@@ -213,20 +265,24 @@ export default function App() {
                   className="text-blue-600 hover:underline font-medium"
                 >
                   notion.so/my-integrations
-                </a>
-                {' '}and create a new integration
+                </a>{' '}
+                {t('settingsNotionGuideCreateIntegrationTail')}
               </li>
               <li>
-                <span className="font-medium">Copy Token:</span> Copy the "Internal Integration Token" (starts with secret_)
+                <span className="font-medium">{t('settingsNotionGuideCopyToken')}</span>{' '}
+                {t('settingsNotionGuideCopyTokenBody')}
               </li>
               <li>
-                <span className="font-medium">Create Database:</span> In Notion, create a new database (Table/Board/List)
+                <span className="font-medium">{t('settingsNotionGuideCreateDatabase')}</span>{' '}
+                {t('settingsNotionGuideCreateDatabaseBody')}
               </li>
               <li>
-                <span className="font-medium">Share Database:</span> Click "Share" on the database and invite your integration
+                <span className="font-medium">{t('settingsNotionGuideShareDatabase')}</span>{' '}
+                {t('settingsNotionGuideShareDatabaseBody')}
               </li>
               <li>
-                <span className="font-medium">Get Database ID:</span> Copy the 32-character ID from the database URL
+                <span className="font-medium">{t('settingsNotionGuideGetDatabaseId')}</span>{' '}
+                {t('settingsNotionGuideGetDatabaseIdBody')}
                 <div className="mt-1 text-xs bg-white px-2 py-1 rounded border border-blue-300 font-mono">
                   https://notion.so/workspace/<span className="bg-yellow-200">DATABASE_ID</span>?v=...
                 </div>
@@ -234,89 +290,89 @@ export default function App() {
             </ol>
           </div>
 
-          {/* Required Database Properties */}
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <h3 className="text-sm font-semibold text-amber-900 mb-2">⚙️ Required Database Properties</h3>
+            <h3 className="text-sm font-semibold text-amber-900 mb-2">{t('settingsNotionRequiredPropsTitle')}</h3>
             <p className="text-sm text-amber-800 mb-3">
-              Your Notion database must have these properties for articles to export correctly:
+              {t('settingsNotionRequiredPropsDescription')}
             </p>
             <div className="space-y-2 text-sm text-amber-900">
               <div className="bg-white px-3 py-2 rounded border border-green-200">
                 <span className="font-mono font-semibold">Name</span>
                 <span className="mx-2">→</span>
-                <span className="text-green-700">Type: Title (Default)</span>
-                <div className="text-xs text-green-600 mt-1">✓ Already exists in every database - stores the article title</div>
+                <span className="text-green-700">{t('settingsTypeTitleDefault')}</span>
+                <div className="text-xs text-green-600 mt-1">{t('settingsNotionPropNameHelp')}</div>
               </div>
               <div className="bg-white px-3 py-2 rounded border border-amber-200">
                 <span className="font-mono font-semibold">source</span>
                 <span className="mx-2">→</span>
-                <span className="text-amber-700">Type: URL</span>
-                <div className="text-xs text-amber-600 mt-1">Stores the original conversation URL</div>
+                <span className="text-amber-700">{t('settingsTypeUrl')}</span>
+                <div className="text-xs text-amber-600 mt-1">{t('settingsNotionPropSourceHelp')}</div>
               </div>
               <div className="bg-white px-3 py-2 rounded border border-amber-200">
                 <span className="font-mono font-semibold">platform</span>
                 <span className="mx-2">→</span>
-                <span className="text-amber-700">Type: Multi-select</span>
-                <div className="text-xs text-amber-600 mt-1">Records the source platform (ChatGPT, DeepSeek, Gemini)</div>
+                <span className="text-amber-700">{t('settingsTypeMultiSelect')}</span>
+                <div className="text-xs text-amber-600 mt-1">{t('settingsNotionPropPlatformHelp')}</div>
               </div>
               <div className="bg-white px-3 py-2 rounded border border-amber-200">
                 <span className="font-mono font-semibold">timestamp</span>
                 <span className="mx-2">→</span>
-                <span className="text-amber-700">Type: Date</span>
-                <div className="text-xs text-amber-600 mt-1">Records when the article was created</div>
+                <span className="text-amber-700">{t('settingsTypeDate')}</span>
+                <div className="text-xs text-amber-600 mt-1">{t('settingsNotionPropTimestampHelp')}</div>
               </div>
               <div className="bg-white px-3 py-2 rounded border border-blue-200">
                 <span className="font-mono font-semibold">tag</span>
                 <span className="mx-2">→</span>
-                <span className="text-blue-700">Type: Multi-select (Optional)</span>
-                <div className="text-xs text-blue-600 mt-1">For article categorization - initially empty, can be filled manually</div>
+                <span className="text-blue-700">{t('settingsTypeMultiSelectOptional')}</span>
+                <div className="text-xs text-blue-600 mt-1">{t('settingsNotionPropTagHelp')}</div>
               </div>
             </div>
             <p className="text-xs text-amber-700 mt-3 italic">
-              💡 Tip: Add these properties to your database by clicking the "+" button in the database header
+              {t('settingsNotionTip')}
             </p>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Integration Token</label>
+              <label className="block text-sm font-medium mb-1">{t('settingsIntegrationTokenLabel')}</label>
               <div className="relative">
                 <input
-                  type={showNotionToken ? "text" : "password"}
+                  type={showNotionToken ? 'text' : 'password'}
                   value={notionToken}
-                  onChange={(e) => setNotionToken(e.target.value)}
+                  onChange={(event) => setNotionToken(event.target.value)}
                   placeholder="secret_..."
                   className="w-full px-3 py-2 pr-10 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowNotionToken(!showNotionToken)}
+                  onClick={() => setShowNotionToken((current) => !current)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  title={showNotionToken ? "Hide token" : "Show token"}
+                  title={showNotionToken ? t('settingsHideToken') : t('settingsShowToken')}
+                  aria-label={showNotionToken ? t('settingsHideToken') : t('settingsShowToken')}
                 >
                   {showNotionToken ? '🙈' : '👁️'}
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Your Notion integration token (stored locally, never shared)
+                {t('settingsIntegrationTokenHelp')}
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">Database ID</label>
+              <label className="block text-sm font-medium mb-1">{t('settingsDatabaseIdLabel')}</label>
               <input
                 type="text"
                 value={notionDatabaseId}
-                onChange={(e) => setNotionDatabaseId(e.target.value)}
+                onChange={(event) => setNotionDatabaseId(event.target.value)}
                 placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="text-xs text-gray-500 mt-1">
-                32-character database ID from your Notion database URL
+                {t('settingsDatabaseIdHelp')}
               </p>
             </div>
 
-            {notionMessage && (
+            {notionMessage ? (
               <div
                 className={`p-3 rounded whitespace-pre-line ${
                   notionMessage.type === 'success'
@@ -326,19 +382,18 @@ export default function App() {
               >
                 {notionMessage.text}
               </div>
-            )}
+            ) : null}
 
             <button
               onClick={handleTestNotionConnection}
               disabled={testingNotion}
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors disabled:opacity-50"
             >
-              {testingNotion ? 'Testing...' : 'Test Notion Connection'}
+              {testingNotion ? t('settingsTesting') : t('settingsTestNotionConnection')}
             </button>
           </div>
         </div>
 
-        {/* Save Button at Bottom */}
         <div className="mt-8 pt-6 border-t">
           <button
             onClick={handleSave}
@@ -348,10 +403,10 @@ export default function App() {
             {saving ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="animate-spin">⏳</span>
-                <span>Saving Settings...</span>
+                <span>{t('settingsSaving')}</span>
               </span>
             ) : (
-              'Save All Settings'
+              t('settingsSaveAll')
             )}
           </button>
         </div>

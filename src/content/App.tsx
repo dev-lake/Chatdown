@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ChromeMessage, ChromeResponse, GenerationMode, WorkflowPhase } from '../types';
+import { useI18n } from '../i18n/react';
 import { openChatdownOverlay, showChatdownError } from './events';
 import { detectPlatform, getParser } from './parsers';
 
@@ -9,6 +10,7 @@ function isBusyPhase(phase: WorkflowPhase | undefined): boolean {
 }
 
 export default function App() {
+  const { locale, t } = useI18n();
   const [loading, setLoading] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -32,7 +34,11 @@ export default function App() {
         return;
       }
 
-      if (message.action === 'partialSelectionLoading' || message.action === 'generatingArticle' || message.action === 'articleChunk') {
+      if (
+        message.action === 'partialSelectionLoading'
+        || message.action === 'generatingArticle'
+        || message.action === 'articleChunk'
+      ) {
         setLoading(true);
       } else if (message.action === 'partialSelectionReady' || message.action === 'displayArticle') {
         setLoading(false);
@@ -120,14 +126,14 @@ export default function App() {
       const parser = getParser(platform);
 
       if (!parser) {
-        showChatdownError('Unsupported platform');
+        showChatdownError(t('contentErrorUnsupportedPlatform'));
         return;
       }
 
       const messages = parser.parse();
 
       if (messages.length === 0) {
-        showChatdownError('No conversation found');
+        showChatdownError(t('contentErrorNoConversation'));
         return;
       }
 
@@ -144,7 +150,7 @@ export default function App() {
       chrome.runtime.sendMessage(request, (response: ChromeResponse) => {
         if (chrome.runtime.lastError) {
           setLoading(false);
-          showChatdownError(chrome.runtime.lastError.message || 'Failed to contact the background worker.');
+          showChatdownError(chrome.runtime.lastError.message || t('contentErrorBackgroundUnavailable'));
           return;
         }
 
@@ -160,53 +166,53 @@ export default function App() {
       });
     } catch (error) {
       setLoading(false);
-      showChatdownError(error instanceof Error ? error.message : 'Unknown error');
+      showChatdownError(error instanceof Error ? error.message : t('commonUnknownError'));
     }
   };
 
   return (
     <>
-      <div className="chatdown-split-button" ref={buttonGroupRef}>
-      <button
-        type="button"
-        onClick={handlePrimaryButtonClick}
-        className="btn btn-ghost text-token-text-primary chatdown-split-button__main"
-        title={loading ? 'Reopen Chatdown window' : 'Generate from the full conversation'}
-        aria-busy={loading}
-      >
-        <div className="flex w-full items-center justify-center gap-1.5">
-          {loading ? (
-            <svg className="icon-sm animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray="32" strokeDashoffset="32">
-                <animate attributeName="stroke-dashoffset" values="32;0" dur="1s" repeatCount="indefinite" />
-              </circle>
-            </svg>
-          ) : (
-            <svg className="icon-sm" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M7 8h10M7 12h10M7 16h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          )}
-          <span>Chatdown</span>
-        </div>
-      </button>
+      <div className="chatdown-split-button" ref={buttonGroupRef} lang={locale}>
+        <button
+          type="button"
+          onClick={handlePrimaryButtonClick}
+          className="btn btn-ghost text-token-text-primary chatdown-split-button__main"
+          title={loading ? t('contentButtonTitleReopen') : t('contentButtonTitleGenerateFull')}
+          aria-busy={loading}
+        >
+          <div className="flex w-full items-center justify-center gap-1.5">
+            {loading ? (
+              <svg className="icon-sm animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray="32" strokeDashoffset="32">
+                  <animate attributeName="stroke-dashoffset" values="32;0" dur="1s" repeatCount="indefinite" />
+                </circle>
+              </svg>
+            ) : (
+              <svg className="icon-sm" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M7 8h10M7 12h10M7 16h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            )}
+            <span>{t('appName')}</span>
+          </div>
+        </button>
 
-      <button
-        type="button"
-        className="btn btn-ghost text-token-text-primary chatdown-split-button__toggle"
-        ref={toggleButtonRef}
-        onClick={() => setShowMenu((current) => !current)}
-        aria-label="Choose Chatdown generation mode"
-        aria-expanded={showMenu}
-        disabled={loading}
-      >
-        <svg className="icon-sm" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M8 10l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+        <button
+          type="button"
+          className="btn btn-ghost text-token-text-primary chatdown-split-button__toggle"
+          ref={toggleButtonRef}
+          onClick={() => setShowMenu((current) => !current)}
+          aria-label={t('contentGenerationModeAria')}
+          aria-expanded={showMenu}
+          disabled={loading}
+        >
+          <svg className="icon-sm" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 10l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       </div>
 
       {showMenu && menuPosition ? createPortal(
-        <div id="chatdown-button-menu-root">
+        <div id="chatdown-button-menu-root" lang={locale}>
           <div
             className="chatdown-split-button__menu chatdown-split-button__menu--portal"
             ref={menuPanelRef}
@@ -220,16 +226,16 @@ export default function App() {
               className="chatdown-split-button__item"
               onClick={() => void startGeneration('full')}
             >
-              <strong>Full conversation</strong>
-              <span>Generate directly from the entire chat.</span>
+              <strong>{t('contentModeFullTitle')}</strong>
+              <span>{t('contentModeFullDescription')}</span>
             </button>
             <button
               type="button"
               className="chatdown-split-button__item"
               onClick={() => void startGeneration('partial')}
             >
-              <strong>Selected rounds</strong>
-              <span>Review one-line round summaries, then choose what to include.</span>
+              <strong>{t('contentModePartialTitle')}</strong>
+              <span>{t('contentModePartialDescription')}</span>
             </button>
           </div>
         </div>,

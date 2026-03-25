@@ -8,6 +8,7 @@ import type {
   Message,
   Platform,
 } from '../types';
+import { getCurrentLocaleContext, type TranslateFn } from '../i18n/core';
 import { getApiConfig, getNotionConfig } from './storage';
 import {
   generateArticle,
@@ -125,8 +126,8 @@ async function sendMessageToTab(tabId: number, message: ChromeMessage): Promise<
   }
 }
 
-function buildErrorArticle(errorMessage: string): string {
-  return `# Error\n\n${errorMessage}`;
+function buildErrorArticle(errorTitle: string, errorMessage: string): string {
+  return `# ${errorTitle}\n\n${errorMessage}`;
 }
 
 function appendSourceUrl(article: string, sourceUrl: string): string {
@@ -134,16 +135,17 @@ function appendSourceUrl(article: string, sourceUrl: string): string {
     return article;
   }
 
-  return `${article}\n\n---\n\n**Source:** [${sourceUrl}](${sourceUrl})`;
+  return `${article}\n\n---\n\n[${sourceUrl}](${sourceUrl})`;
 }
 
 function getTabIdFromSender(
   sender: chrome.runtime.MessageSender,
-  sendResponse: (response: ChromeResponse) => void
+  sendResponse: (response: ChromeResponse) => void,
+  t: TranslateFn
 ): number | null {
   const tabId = sender.tab?.id;
   if (typeof tabId !== 'number') {
-    sendResponse({ error: 'No tab ID found' });
+    sendResponse({ error: t('backgroundNoTabId') });
     return null;
   }
 
@@ -314,10 +316,11 @@ async function emitStateMessage(
 
 async function publishError(
   tabId: number,
+  t: TranslateFn,
   errorMessage: string,
   extraState: Partial<ArticleState> = {}
 ): Promise<ArticleState> {
-  const article = buildErrorArticle(errorMessage);
+  const article = buildErrorArticle(t('commonErrorTitle'), errorMessage);
 
   const state = await setArticleStateForTab(tabId, {
     article,
@@ -375,6 +378,7 @@ async function resumeWorkflowForState(tabId: number, state: ArticleState): Promi
 async function runArticleGeneration(
   tabId: number,
   request: GenerationRequest,
+  t: TranslateFn,
   options: {
     bypassCache?: boolean;
     notice?: string;
@@ -383,8 +387,8 @@ async function runArticleGeneration(
   const config = await getApiConfig();
 
   if (!config) {
-    const errorMessage = 'API configuration not found. Please configure in settings.';
-    await publishError(tabId, errorMessage, {
+    const errorMessage = t('backgroundApiConfigMissing');
+    await publishError(tabId, t, errorMessage, {
       messages: request.allMessages,
       sourceUrl: request.sourceUrl,
       platform: request.platform,
@@ -447,7 +451,7 @@ async function runArticleGeneration(
   await emitStateMessage(tabId, 'generatingArticle', generatingState);
 
   try {
-    const article = await generateArticle(request.articleMessages, config, async (chunk) => {
+    const article = await generateArticle(request.articleMessages, config, t, async (chunk) => {
       partialArticle += chunk;
 
       await setArticleStateForTab(tabId, {
@@ -485,9 +489,9 @@ async function runArticleGeneration(
 
     return nextState;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorMessage = error instanceof Error ? error.message : t('commonUnknownError');
 
-    await publishError(tabId, errorMessage, {
+    await publishError(tabId, t, errorMessage, {
       conversationHash,
       messages: request.allMessages,
       sourceUrl: request.sourceUrl,
@@ -506,21 +510,22 @@ async function preparePartialSelection(
   messages: Message[],
   sourceUrl: string,
   platform: Platform,
-  previousVisibleState: ArticleState | null
+  previousVisibleState: ArticleState | null,
+  t: TranslateFn
 ): Promise<SelectionPreparationResult> {
   const config = await getApiConfig();
   const conversationHash = hashMessages(messages);
   const baseRounds = buildConversationRounds(messages);
 
   if (!config) {
-    const errorMessage = 'API configuration not found. Please configure in settings.';
+    const errorMessage = t('backgroundApiConfigMissing');
 
     if (previousVisibleState) {
       const restoredState = await restoreVisibleArticle(tabId, previousVisibleState, errorMessage);
       return { state: restoredState, error: errorMessage };
     }
 
-    const errorState = await publishError(tabId, errorMessage, {
+    const errorState = await publishError(tabId, t, errorMessage, {
       conversationHash,
       messages,
       sourceUrl,
@@ -550,7 +555,7 @@ async function preparePartialSelection(
   await emitStateMessage(tabId, 'partialSelectionLoading', loadingState);
 
   try {
-    const summaries = await summarizeConversationRounds(baseRounds, messages, config);
+    const summaries = await summarizeConversationRounds(baseRounds, messages, config, t);
     const rounds = applyRoundSummaries(baseRounds, summaries);
 
     const nextState = await setArticleStateForTab(tabId, {
@@ -571,14 +576,14 @@ async function preparePartialSelection(
 
     return { state: nextState };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Failed to summarize conversation rounds.';
+    const errorMessage = error instanceof Error ? error.message : t('backgroundFailedToSummarizeRounds');
 
     if (previousVisibleState) {
       const restoredState = await restoreVisibleArticle(tabId, previousVisibleState, errorMessage);
       return { state: restoredState, error: errorMessage };
     }
 
-    const errorState = await publishError(tabId, errorMessage, {
+    const errorState = await publishError(tabId, t, errorMessage, {
       conversationHash,
       messages,
       sourceUrl,
@@ -647,7 +652,8 @@ async function handleStartArticleGeneration(
   sender: chrome.runtime.MessageSender,
   sendResponse: (response: ChromeResponse) => void
 ) {
-  const tabId = getTabIdFromSender(sender, sendResponse);
+  const { t } = await getCurrentLocaleContext();
+  const tabId = getTabIdFromSender(sender, sendResponse, t);
   if (tabId === null) {
     return;
   }
@@ -659,8 +665,8 @@ async function handleStartArticleGeneration(
 
   try {
     if (messages.length === 0) {
-      const errorMessage = 'No conversation found.';
-      const state = await publishError(tabId, errorMessage, {
+      const errorMessage = t('backgroundNoConversationFound');
+      const state = await publishError(tabId, t, errorMessage, {
         messages,
         sourceUrl,
         platform,
@@ -699,7 +705,7 @@ async function handleStartArticleGeneration(
         mode: 'full',
         rounds: [],
         selectedRoundIds: [],
-      });
+      }, t);
 
       sendResponse({ article: nextState.article, state: nextState });
       return;
@@ -711,7 +717,8 @@ async function handleStartArticleGeneration(
       messages,
       sourceUrl,
       platform,
-      previousVisibleState
+      previousVisibleState,
+      t
     );
 
     sendResponse({
@@ -721,7 +728,7 @@ async function handleStartArticleGeneration(
     });
   } catch (error) {
     sendResponse({
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      error: error instanceof Error ? error.message : t('commonUnknownError'),
       state: await getArticleStateForTab(tabId),
     });
   }
@@ -732,7 +739,8 @@ async function handleGenerateArticleFromSelection(
   sender: chrome.runtime.MessageSender,
   sendResponse: (response: ChromeResponse) => void
 ) {
-  const tabId = getTabIdFromSender(sender, sendResponse);
+  const { t } = await getCurrentLocaleContext();
+  const tabId = getTabIdFromSender(sender, sendResponse, t);
   if (tabId === null) {
     return;
   }
@@ -741,7 +749,7 @@ async function handleGenerateArticleFromSelection(
     const currentState = await getArticleStateForTab(tabId);
 
     if (currentState.mode !== 'partial' || currentState.phase !== 'selecting_rounds') {
-      sendResponse({ error: 'No partial selection is ready to generate.' });
+      sendResponse({ error: t('backgroundNoPartialSelectionReady') });
       return;
     }
 
@@ -751,7 +759,7 @@ async function handleGenerateArticleFromSelection(
     );
 
     if (selectedRoundIds.length === 0) {
-      sendResponse({ error: 'Choose at least one conversation round.' });
+      sendResponse({ error: t('backgroundChooseAtLeastOneRound') });
       return;
     }
 
@@ -762,7 +770,7 @@ async function handleGenerateArticleFromSelection(
     );
 
     if (articleMessages.length === 0) {
-      sendResponse({ error: 'The selected conversation rounds do not contain any messages.' });
+      sendResponse({ error: t('backgroundSelectedRoundsNoMessages') });
       return;
     }
 
@@ -774,12 +782,12 @@ async function handleGenerateArticleFromSelection(
       mode: 'partial',
       rounds: currentState.rounds,
       selectedRoundIds,
-    });
+    }, t);
 
     sendResponse({ article: nextState.article, state: nextState });
   } catch (error) {
     sendResponse({
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      error: error instanceof Error ? error.message : t('commonUnknownError'),
       state: await getArticleStateForTab(tabId),
     });
   }
@@ -789,9 +797,11 @@ async function handleTestConnection(
   message: ChromeMessage,
   sendResponse: (response: ChromeResponse) => void
 ) {
+  const { t } = await getCurrentLocaleContext();
+
   try {
     if (!message.config) {
-      sendResponse({ error: 'No configuration provided' });
+      sendResponse({ error: t('backgroundNoConfigurationProvided') });
       return;
     }
 
@@ -800,7 +810,7 @@ async function handleTestConnection(
   } catch (error) {
     sendResponse({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : t('commonUnknownError'),
     });
   }
 }
@@ -809,7 +819,8 @@ async function handleGetArticleState(
   sender: chrome.runtime.MessageSender,
   sendResponse: (response: ChromeResponse) => void
 ) {
-  const tabId = getTabIdFromSender(sender, sendResponse);
+  const { t } = await getCurrentLocaleContext();
+  const tabId = getTabIdFromSender(sender, sendResponse, t);
   if (tabId === null) {
     return;
   }
@@ -821,7 +832,7 @@ async function handleGetArticleState(
       state,
     });
   } catch {
-    sendResponse({ error: 'Failed to load article state.' });
+    sendResponse({ error: t('backgroundFailedToLoadArticleState') });
   }
 }
 
@@ -830,7 +841,8 @@ async function handleRegenerateArticle(
   sender: chrome.runtime.MessageSender,
   sendResponse: (response: ChromeResponse) => void
 ) {
-  const tabId = getTabIdFromSender(sender, sendResponse);
+  const { t } = await getCurrentLocaleContext();
+  const tabId = getTabIdFromSender(sender, sendResponse, t);
   if (tabId === null) {
     return;
   }
@@ -839,8 +851,8 @@ async function handleRegenerateArticle(
     const currentState = await getArticleStateForTab(tabId);
 
     if (currentState.messages.length === 0) {
-      const errorMessage = 'No conversation found to regenerate.';
-      const state = await publishError(tabId, errorMessage);
+      const errorMessage = t('backgroundNoConversationToRegenerate');
+      const state = await publishError(tabId, t, errorMessage);
       sendResponse({ error: errorMessage, state });
       return;
     }
@@ -859,6 +871,7 @@ async function handleRegenerateArticle(
           rounds: [],
           selectedRoundIds: [],
         },
+        t,
         { bypassCache: true }
       );
 
@@ -872,7 +885,8 @@ async function handleRegenerateArticle(
       currentState.messages,
       currentState.sourceUrl,
       currentState.platform,
-      previousVisibleState
+      previousVisibleState,
+      t
     );
 
     sendResponse({
@@ -882,7 +896,7 @@ async function handleRegenerateArticle(
     });
   } catch (error) {
     sendResponse({
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      error: error instanceof Error ? error.message : t('commonUnknownError'),
       state: await getArticleStateForTab(tabId),
     });
   }
@@ -893,13 +907,14 @@ async function handleSaveArticleContent(
   sender: chrome.runtime.MessageSender,
   sendResponse: (response: ChromeResponse) => void
 ) {
-  const tabId = getTabIdFromSender(sender, sendResponse);
+  const { t } = await getCurrentLocaleContext();
+  const tabId = getTabIdFromSender(sender, sendResponse, t);
   if (tabId === null) {
     return;
   }
 
   if (!message.articleContent) {
-    sendResponse({ error: 'No article content to save.' });
+    sendResponse({ error: t('backgroundNoArticleContentToSave') });
     return;
   }
 
@@ -929,7 +944,7 @@ async function handleSaveArticleContent(
     });
   } catch (error) {
     sendResponse({
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      error: error instanceof Error ? error.message : t('commonUnknownError'),
     });
   }
 }
@@ -938,13 +953,15 @@ async function handleTestNotionConnection(
   message: ChromeMessage,
   sendResponse: (response: ChromeResponse) => void
 ) {
+  const { t } = await getCurrentLocaleContext();
+
   try {
     if (!message.notionConfig) {
-      sendResponse({ error: 'No Notion configuration provided' });
+      sendResponse({ error: t('backgroundNoNotionConfigurationProvided') });
       return;
     }
 
-    const result = await testNotionConnection(message.notionConfig);
+    const result = await testNotionConnection(message.notionConfig, t);
 
     if (result.success) {
       sendResponse({ success: true });
@@ -961,12 +978,12 @@ async function handleTestNotionConnection(
 
     sendResponse({
       success: false,
-      error: result.error || 'Connection failed',
+      error: result.error || t('settingsNotionConnectionFailed'),
     });
   } catch (error) {
     sendResponse({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : t('commonUnknownError'),
     });
   }
 }
@@ -976,7 +993,8 @@ async function handleExportToNotion(
   sender: chrome.runtime.MessageSender,
   sendResponse: (response: ChromeResponse) => void
 ) {
-  const tabId = getTabIdFromSender(sender, sendResponse);
+  const { t } = await getCurrentLocaleContext();
+  const tabId = getTabIdFromSender(sender, sendResponse, t);
   if (tabId === null) {
     return;
   }
@@ -985,12 +1003,12 @@ async function handleExportToNotion(
     const config = await getNotionConfig();
 
     if (!config) {
-      sendResponse({ error: 'Notion not configured. Please configure in settings.' });
+      sendResponse({ error: t('backgroundNotionNotConfigured') });
       return;
     }
 
     if (!message.articleTitle || !message.articleContent) {
-      sendResponse({ error: 'No article content to export' });
+      sendResponse({ error: t('backgroundNoArticleContentToExport') });
       return;
     }
 
@@ -1001,7 +1019,8 @@ async function handleExportToNotion(
       message.articleTitle,
       message.articleContent,
       state.sourceUrl,
-      state.platform
+      state.platform,
+      t
     );
 
     if (result.success) {
@@ -1012,7 +1031,7 @@ async function handleExportToNotion(
     sendResponse({ error: result.error });
   } catch (error) {
     sendResponse({
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      error: error instanceof Error ? error.message : t('commonUnknownError'),
     });
   }
 }

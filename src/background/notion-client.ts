@@ -1,9 +1,13 @@
 import type { NotionConfig, NotionBlock } from '../types';
+import type { TranslateFn } from '../i18n/core';
 
 const NOTION_API_VERSION = '2022-06-28';
 
 // Test Notion connection and verify required properties
-export async function testNotionConnection(config: NotionConfig): Promise<{ success: boolean; error?: string; missingProperties?: string[] }> {
+export async function testNotionConnection(
+  config: NotionConfig,
+  t: TranslateFn
+): Promise<{ success: boolean; error?: string; missingProperties?: string[] }> {
   try {
     const response = await fetch(`https://api.notion.com/v1/databases/${config.databaseId}`, {
       method: 'GET',
@@ -17,7 +21,7 @@ export async function testNotionConnection(config: NotionConfig): Promise<{ succ
       const errorData = await response.json();
       return {
         success: false,
-        error: errorData.message || 'Failed to connect to Notion database'
+        error: errorData.message || t('notionDatabaseConnectionFailed'),
       };
     }
 
@@ -40,7 +44,7 @@ export async function testNotionConnection(config: NotionConfig): Promise<{ succ
     console.error('Notion connection test failed:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: error instanceof Error ? error.message : t('commonUnknownError'),
     };
   }
 }
@@ -347,7 +351,8 @@ export async function exportToNotion(
   title: string,
   content: string,
   sourceUrl?: string,
-  platform?: string
+  platform?: string,
+  t?: TranslateFn
 ): Promise<{ success: boolean; pageUrl?: string; error?: string }> {
   try {
     console.log('Starting Notion export...');
@@ -425,7 +430,10 @@ export async function exportToNotion(
     if (!response.ok) {
       const error = await response.text();
       console.error('Notion API error:', error);
-      return { success: false, error: `Notion API error: ${error}` };
+      return {
+        success: false,
+        error: t ? t('notionApiError', { error }) : `Notion API error: ${error}`,
+      };
     }
 
     const data = await response.json();
@@ -435,7 +443,7 @@ export async function exportToNotion(
     console.error('Export to Notion failed:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : (t ? t('commonUnknownError') : 'Unknown error'),
     };
   }
 }
