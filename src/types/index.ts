@@ -3,6 +3,17 @@ export interface Message {
   content: string;
 }
 
+export type WorkflowPhase = 'idle' | 'summarizing_rounds' | 'selecting_rounds' | 'generating' | 'ready' | 'error';
+export type GenerationMode = 'full' | 'partial';
+
+export interface ConversationRound {
+  id: string;
+  index: number;
+  messageIndexes: number[];
+  summary: string;
+  preview?: string;
+}
+
 export interface ArticleState {
   article: string;
   partialArticle: string;
@@ -10,7 +21,11 @@ export interface ArticleState {
   messages: Message[];
   sourceUrl: string;
   platform: Platform;
-  isGenerating: boolean;
+  phase: WorkflowPhase;
+  mode: GenerationMode | null;
+  rounds: ConversationRound[];
+  selectedRoundIds: string[];
+  notice: string;
 }
 
 export interface ApiConfig {
@@ -33,8 +48,11 @@ export interface NotionBlock {
 export interface ChromeMessage {
   action:
     | 'startArticleGeneration'
+    | 'generateArticleFromSelection'
     | 'testConnection'
     | 'displayArticle'
+    | 'partialSelectionLoading'
+    | 'partialSelectionReady'
     | 'generatingArticle'
     | 'articleChunk'
     | 'getArticleState'
@@ -46,12 +64,14 @@ export interface ChromeMessage {
   config?: ApiConfig;
   article?: string;
   chunk?: string;
-  forceRegenerate?: boolean;
   sourceUrl?: string;
   platform?: Platform;
   notionConfig?: NotionConfig;
   articleTitle?: string;
   articleContent?: string;
+  mode?: GenerationMode;
+  selectedRoundIds?: string[];
+  state?: ArticleState;
 }
 
 export interface ChromeResponse {

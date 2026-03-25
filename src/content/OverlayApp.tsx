@@ -7,7 +7,7 @@ import Image from '@tiptap/extension-image';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { marked } from 'marked';
-import type { ArticleState, ChromeMessage } from '../types';
+import type { ArticleState, ChromeMessage, GenerationMode } from '../types';
 import {
   CHATDOWN_OPEN_OVERLAY_EVENT,
   CHATDOWN_SHOW_ERROR_EVENT,
@@ -44,6 +44,10 @@ interface ResizeState {
 
 function buildErrorArticle(message: string): string {
   return `# Error\n\n${message}`;
+}
+
+function isHtmlContent(value: string): boolean {
+  return /<\/?[a-z][\s\S]*>/i.test(value);
 }
 
 function getViewportLimits() {
@@ -148,39 +152,75 @@ function getDefaultWindowRect(): WindowRect {
 
 function applyArticleStateToView(
   state: ArticleState | undefined,
+  setArticleState: (value: ArticleState | null) => void,
   setMarkdownContent: (value: string) => void,
   setStreamingContent: (value: string) => void,
-  setLoading: (value: boolean) => void
+  setIsEditing: (value: boolean) => void
 ): void {
   if (!state) {
+    setArticleState(null);
     setMarkdownContent('');
     setStreamingContent('');
-    setLoading(false);
+    setIsEditing(false);
     return;
   }
 
-  if (state.isGenerating) {
+  setArticleState(state);
+  setIsEditing(false);
+
+  if (state.phase === 'generating') {
     setMarkdownContent('');
     setStreamingContent(state.partialArticle || '');
-    setLoading(true);
     return;
   }
 
-  setMarkdownContent(state.article || '');
+  if (state.phase === 'ready' || state.phase === 'error') {
+    setMarkdownContent(state.article || '');
+    setStreamingContent('');
+    return;
+  }
+
+  setMarkdownContent('');
   setStreamingContent('');
-  setLoading(false);
+}
+
+function getOverlayTitle(articleState: ArticleState | null, isEditing: boolean, markdownContent: string): string {
+  if (isEditing) {
+    return 'Editing article';
+  }
+
+  if (articleState?.phase === 'summarizing_rounds') {
+    return 'Preparing round summaries';
+  }
+
+  if (articleState?.phase === 'selecting_rounds') {
+    return 'Choose conversation rounds';
+  }
+
+  if (articleState?.phase === 'generating') {
+    return 'Generating article';
+  }
+
+  if (markdownContent) {
+    return 'Article ready';
+  }
+
+  return 'Article workspace';
 }
 
 export default function OverlayApp() {
   const [visible, setVisible] = useState(false);
   const [windowRect, setWindowRect] = useState<WindowRect>(() => getDefaultWindowRect());
+  const [articleState, setArticleState] = useState<ArticleState | null>(null);
   const [markdownContent, setMarkdownContent] = useState('');
-  const [loading, setLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showRegenerateMenu, setShowRegenerateMenu] = useState(false);
+  const [selectedRoundIds, setSelectedRoundIds] = useState<string[]>([]);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const regenerateMenuRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{ startX: number; startY: number; origin: WindowRect } | null>(null);
   const resizeStateRef = useRef<ResizeState | null>(null);
 
@@ -211,14 +251,6 @@ export default function OverlayApp() {
     },
   });
 
-  const stopPointerInteraction = useCallback(() => {
-    dragStateRef.current = null;
-    resizeStateRef.current = null;
-    document.body.style.userSelect = '';
-    window.removeEventListener('pointermove', handlePointerMove);
-    window.removeEventListener('pointerup', stopPointerInteraction);
-  }, []);
-
   const handlePointerMove = useCallback((event: PointerEvent) => {
     if (dragStateRef.current) {
       const { startX, startY, origin } = dragStateRef.current;
@@ -245,26 +277,48 @@ export default function OverlayApp() {
     }
   }, []);
 
+  const stopPointerInteraction = useCallback(() => {
+    dragStateRef.current = null;
+    resizeStateRef.current = null;
+    document.body.style.userSelect = '';
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', stopPointerInteraction);
+  }, [handlePointerMove]);
+
   useEffect(() => {
     const loadArticleState = async () => {
       try {
         const response = await chrome.runtime.sendMessage({ action: 'getArticleState' });
-        applyArticleStateToView(response?.state, setMarkdownContent, setStreamingContent, setLoading);
-      } catch (error) {
+        applyArticleStateToView(
+          response?.state,
+          setArticleState,
+          setMarkdownContent,
+          setStreamingContent,
+          setIsEditing
+        );
+      } catch {
         // Ignore initialization failures in the overlay host.
       }
     };
 
     const handleRuntimeMessage = (message: ChromeMessage) => {
+      if (message.state) {
+        applyArticleStateToView(
+          message.state,
+          setArticleState,
+          setMarkdownContent,
+          setStreamingContent,
+          setIsEditing
+        );
+      }
+
       if (message.action === 'displayArticle') {
-        setMarkdownContent(message.article || '');
+        setMarkdownContent(message.article || message.state?.article || '');
         setStreamingContent('');
-        setLoading(false);
         setIsEditing(false);
       } else if (message.action === 'generatingArticle') {
-        setLoading(true);
         setMarkdownContent('');
-        setStreamingContent('');
+        setStreamingContent(message.state?.partialArticle || '');
         setIsEditing(false);
       } else if (message.action === 'articleChunk') {
         setStreamingContent((current) => current + (message.chunk || ''));
@@ -278,9 +332,9 @@ export default function OverlayApp() {
     const handleShowError = (event: Event) => {
       const detail = (event as CustomEvent<{ message: string }>).detail;
       setVisible(true);
+      setArticleState(null);
       setMarkdownContent(buildErrorArticle(detail?.message || 'Unknown error'));
       setStreamingContent('');
-      setLoading(false);
       setIsEditing(false);
     };
 
@@ -309,13 +363,19 @@ export default function OverlayApp() {
   }, [visible]);
 
   useEffect(() => {
-    if (!showExportMenu) {
+    if (!showExportMenu && !showRegenerateMenu) {
       return;
     }
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (!exportMenuRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+
+      if (!exportMenuRef.current?.contains(target)) {
         setShowExportMenu(false);
+      }
+
+      if (!regenerateMenuRef.current?.contains(target)) {
+        setShowRegenerateMenu(false);
       }
     };
 
@@ -323,7 +383,16 @@ export default function OverlayApp() {
     return () => {
       document.removeEventListener('mousedown', handlePointerDown);
     };
-  }, [showExportMenu]);
+  }, [showExportMenu, showRegenerateMenu]);
+
+  useEffect(() => {
+    if (articleState?.phase !== 'selecting_rounds') {
+      setSelectedRoundIds([]);
+      return;
+    }
+
+    setSelectedRoundIds(articleState.selectedRoundIds);
+  }, [articleState?.phase, articleState?.conversationHash, articleState?.rounds, articleState?.selectedRoundIds]);
 
   const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -332,6 +401,7 @@ export default function OverlayApp() {
 
     event.preventDefault();
     setShowExportMenu(false);
+    setShowRegenerateMenu(false);
     dragStateRef.current = {
       startX: event.clientX,
       startY: event.clientY,
@@ -352,6 +422,7 @@ export default function OverlayApp() {
 
     event.preventDefault();
     setShowExportMenu(false);
+    setShowRegenerateMenu(false);
     resizeStateRef.current = {
       direction,
       startX: event.clientX,
@@ -396,7 +467,9 @@ export default function OverlayApp() {
     }
 
     setIsEditing(true);
-    const html = await marked.parse(markdownContent);
+    const html = isHtmlContent(markdownContent)
+      ? markdownContent
+      : await marked.parse(markdownContent);
     editor.commands.setContent(html);
     editor.commands.focus();
   };
@@ -416,10 +489,14 @@ export default function OverlayApp() {
         articleContent: html,
       });
 
-      if (response?.error) {
+      if (response?.state) {
+        setArticleState(response.state);
+      }
+
+      if (response?.error && !response.state) {
         window.alert(`Failed to save article: ${response.error}`);
       }
-    } catch (error) {
+    } catch {
       window.alert('Failed to save article.');
     }
   };
@@ -428,23 +505,58 @@ export default function OverlayApp() {
     setIsEditing(false);
   };
 
-  const handleRegenerate = async () => {
+  const handleRegenerate = async (mode: GenerationMode) => {
     try {
-      setLoading(true);
-      setMarkdownContent('');
-      setStreamingContent('');
-      setIsEditing(false);
-      setShowExportMenu(false);
+      setShowRegenerateMenu(false);
+      const response = await chrome.runtime.sendMessage({
+        action: 'regenerateArticle',
+        mode,
+      });
 
-      const response = await chrome.runtime.sendMessage({ action: 'regenerateArticle' });
-
-      if (response?.error) {
-        window.alert(`Failed to regenerate: ${response.error}`);
-        setLoading(false);
+      if (response?.state) {
+        applyArticleStateToView(
+          response.state,
+          setArticleState,
+          setMarkdownContent,
+          setStreamingContent,
+          setIsEditing
+        );
       }
-    } catch (error) {
+
+      if (response?.error && !response.state) {
+        window.alert(`Failed to regenerate: ${response.error}`);
+      }
+    } catch {
       window.alert('Failed to regenerate article.');
-      setLoading(false);
+    }
+  };
+
+  const handleGenerateFromSelection = async () => {
+    if (selectedRoundIds.length === 0) {
+      return;
+    }
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'generateArticleFromSelection',
+        selectedRoundIds,
+      });
+
+      if (response?.state) {
+        applyArticleStateToView(
+          response.state,
+          setArticleState,
+          setMarkdownContent,
+          setStreamingContent,
+          setIsEditing
+        );
+      }
+
+      if (response?.error && !response.state) {
+        window.alert(`Failed to generate article: ${response.error}`);
+      }
+    } catch {
+      window.alert('Failed to generate article.');
     }
   };
 
@@ -471,7 +583,7 @@ export default function OverlayApp() {
       } else {
         window.alert(`Export failed: ${response?.error || 'Unknown error'}`);
       }
-    } catch (error) {
+    } catch {
       window.alert('Export to Notion failed.');
     } finally {
       setExporting(false);
@@ -479,8 +591,9 @@ export default function OverlayApp() {
   };
 
   const renderMarkdown = useCallback((markdown: string) => {
-    const isHtml = /<\/?[a-z][\s\S]*>/i.test(markdown);
-    const html = isHtml ? markdown : (marked.parse(markdown, { async: false }) as string);
+    const html = isHtmlContent(markdown)
+      ? markdown
+      : (marked.parse(markdown, { async: false }) as string);
 
     return (
       <div
@@ -500,7 +613,129 @@ export default function OverlayApp() {
   const closeOverlay = () => {
     setVisible(false);
     setShowExportMenu(false);
+    setShowRegenerateMenu(false);
     setIsEditing(false);
+  };
+
+  const title = getOverlayTitle(articleState, isEditing, markdownContent);
+
+  const renderSelectionBody = () => {
+    if (!articleState) {
+      return null;
+    }
+
+    return (
+      <div className="chatdown-selection">
+        <div className="chatdown-selection__header">
+          <span className="chatdown-selection__eyebrow">Partial selection</span>
+          <h2>Choose the conversation rounds to summarize</h2>
+          <p>Select one or more rounds. Chatdown will generate the article using only the original messages from the rounds you choose.</p>
+        </div>
+
+        <div className="chatdown-selection__list">
+          {articleState.rounds.map((round) => {
+            const selected = selectedRoundIds.includes(round.id);
+
+            return (
+              <button
+                key={round.id}
+                type="button"
+                className={`chatdown-round-card${selected ? ' is-selected' : ''}`}
+                onClick={() => {
+                  setSelectedRoundIds((current) => (
+                    current.includes(round.id)
+                      ? current.filter((roundId) => roundId !== round.id)
+                      : [...current, round.id]
+                  ));
+                }}
+              >
+                <div className="chatdown-round-card__top">
+                  <span className="chatdown-round-card__checkbox" aria-hidden="true">
+                    {selected ? '☑' : '☐'}
+                  </span>
+                  <div className="chatdown-round-card__meta">
+                    <strong>Round {round.index}</strong>
+                    <span>{round.summary}</span>
+                  </div>
+                </div>
+
+                {round.preview ? (
+                  <p className="chatdown-round-card__preview">{round.preview}</p>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="chatdown-selection__actions">
+          <button
+            type="button"
+            className="chatdown-primary-button"
+            onClick={handleGenerateFromSelection}
+            disabled={selectedRoundIds.length === 0}
+          >
+            Generate
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderBody = () => {
+    if (articleState?.phase === 'summarizing_rounds') {
+      return (
+        <div className="chatdown-empty-state">
+          <h2>Preparing round summaries...</h2>
+          <p>Chatdown is generating one-line summaries for each conversation round.</p>
+        </div>
+      );
+    }
+
+    if (articleState?.phase === 'selecting_rounds') {
+      return (
+        <div className="chatdown-window__scroll">
+          {renderSelectionBody()}
+        </div>
+      );
+    }
+
+    if (articleState?.phase === 'generating' || streamingContent) {
+      return (
+        <div className="chatdown-window__scroll">
+          {streamingContent ? (
+            renderMarkdown(streamingContent)
+          ) : (
+            <div className="chatdown-empty-state">
+              <h2>Preparing article...</h2>
+              <p>Waiting for the model to return the first chunk.</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (!markdownContent) {
+      return (
+        <div className="chatdown-empty-state">
+          <h2>No article yet</h2>
+          <p>Use Chatdown to generate from the full conversation or choose specific rounds first.</p>
+        </div>
+      );
+    }
+
+    if (isEditing) {
+      return (
+        <div className="chatdown-window__scroll chatdown-window__scroll--editor">
+          <EditorContent editor={editor} />
+        </div>
+      );
+    }
+
+    return (
+      <div className="chatdown-window__scroll">
+        {renderMarkdown(markdownContent)}
+      </div>
+    );
   };
 
   if (!visible) {
@@ -514,9 +749,7 @@ export default function OverlayApp() {
           <div className="chatdown-window__topbar">
             <div className="chatdown-window__drag-region" onPointerDown={startDrag}>
               <div className="chatdown-window__eyebrow">Chatdown</div>
-              <div className="chatdown-window__title">
-                {isEditing ? 'Editing article' : loading ? 'Generating article' : markdownContent ? 'Article ready' : 'Article workspace'}
-              </div>
+              <div className="chatdown-window__title">{title}</div>
             </div>
 
             <button
@@ -528,6 +761,12 @@ export default function OverlayApp() {
               Close
             </button>
           </div>
+
+          {articleState?.notice ? (
+            <div className="chatdown-banner">
+              {articleState.notice}
+            </div>
+          ) : null}
 
           <div className="chatdown-window__toolbar">
             {isEditing ? (
@@ -542,7 +781,11 @@ export default function OverlayApp() {
                   </button>
                 </div>
               </>
-            ) : loading ? (
+            ) : articleState?.phase === 'summarizing_rounds' ? (
+              <span className="chatdown-status">Generating one-line summaries for the conversation rounds...</span>
+            ) : articleState?.phase === 'selecting_rounds' ? (
+              <span className="chatdown-status">Choose the rounds you want Chatdown to use.</span>
+            ) : articleState?.phase === 'generating' ? (
               <span className="chatdown-status">Streaming article content...</span>
             ) : exporting ? (
               <span className="chatdown-status">Exporting to Notion...</span>
@@ -550,9 +793,34 @@ export default function OverlayApp() {
               <>
                 <span className="chatdown-status">Ready</span>
                 <div className="chatdown-toolbar__buttons">
-                  <button type="button" className="chatdown-secondary-button" onClick={handleRegenerate}>
-                    Regenerate
-                  </button>
+                  <div className="chatdown-menu" ref={regenerateMenuRef}>
+                    <button
+                      type="button"
+                      className="chatdown-secondary-button"
+                      onClick={() => setShowRegenerateMenu((current) => !current)}
+                    >
+                      Regenerate
+                    </button>
+
+                    {showRegenerateMenu ? (
+                      <div className="chatdown-menu__content">
+                        <button
+                          type="button"
+                          className="chatdown-menu__item"
+                          onClick={() => void handleRegenerate('full')}
+                        >
+                          Full conversation
+                        </button>
+                        <button
+                          type="button"
+                          className="chatdown-menu__item"
+                          onClick={() => void handleRegenerate('partial')}
+                        >
+                          Selected rounds
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                   <button type="button" className="chatdown-secondary-button" onClick={handleEdit}>
                     Edit
                   </button>
@@ -582,37 +850,13 @@ export default function OverlayApp() {
                 </div>
               </>
             ) : (
-              <span className="chatdown-status">Generate an article from the current conversation.</span>
+              <span className="chatdown-status">Choose a Chatdown generation mode from the button in the chat header.</span>
             )}
           </div>
         </header>
 
         <div className="chatdown-window__body">
-          {loading || streamingContent ? (
-            <div className="chatdown-window__scroll">
-              {streamingContent ? (
-                renderMarkdown(streamingContent)
-              ) : (
-                <div className="chatdown-empty-state">
-                  <h2>Preparing article...</h2>
-                  <p>Waiting for the model to return the first chunk.</p>
-                </div>
-              )}
-            </div>
-          ) : !markdownContent ? (
-            <div className="chatdown-empty-state">
-              <h2>No article yet</h2>
-              <p>Click the Chatdown button in the chat header to generate an article.</p>
-            </div>
-          ) : isEditing ? (
-            <div className="chatdown-window__scroll chatdown-window__scroll--editor">
-              <EditorContent editor={editor} />
-            </div>
-          ) : (
-            <div className="chatdown-window__scroll">
-              {renderMarkdown(markdownContent)}
-            </div>
-          )}
+          {renderBody()}
         </div>
 
         <button
