@@ -162,13 +162,16 @@ export default function App() {
           {t('settingsDescription')}
         </p>
 
-        <div className="space-y-4">
-          <div>
+        <section className="mb-8 rounded-xl border border-gray-200 bg-gray-50/70 p-5">
+          <h2 className="text-xl font-semibold text-gray-900">{t('settingsGeneralHeading')}</h2>
+          <p className="mt-1 text-sm text-gray-600">{t('settingsGeneralDescription')}</p>
+
+          <div className="mt-5">
             <label className="block text-sm font-medium mb-1">{t('settingsLanguageLabel')}</label>
             <select
               value={preference}
               onChange={(event) => void setPreference(event.target.value as LocalePreference)}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               {LOCALE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -180,49 +183,56 @@ export default function App() {
               {t('settingsLanguageHelp')}
             </p>
           </div>
+        </section>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">{t('settingsApiBaseUrlLabel')}</label>
-            <input
-              type="text"
-              value={apiBaseUrl}
-              onChange={(event) => setApiBaseUrl(event.target.value)}
-              placeholder="https://api.openai.com"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              {t('settingsApiBaseUrlHelp')}
-            </p>
-          </div>
+        <section className="rounded-xl border border-gray-200 p-5">
+          <h2 className="text-xl font-semibold text-gray-900">{t('settingsApiHeading')}</h2>
+          <p className="mt-1 text-sm text-gray-600">{t('settingsApiDescription')}</p>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">{t('settingsApiKeyLabel')}</label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder="sk-..."
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              {t('settingsApiKeyHelp')}
-            </p>
-          </div>
+          <div className="mt-5 space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">{t('settingsApiBaseUrlLabel')}</label>
+              <input
+                type="text"
+                value={apiBaseUrl}
+                onChange={(event) => setApiBaseUrl(event.target.value)}
+                placeholder="https://api.openai.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {t('settingsApiBaseUrlHelp')}
+              </p>
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">{t('settingsModelNameLabel')}</label>
-            <input
-              type="text"
-              value={modelName}
-              onChange={(event) => setModelName(event.target.value)}
-              placeholder="gpt-4o-mini"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              {t('settingsModelNameHelp')}
-            </p>
+            <div>
+              <label className="block text-sm font-medium mb-1">{t('settingsApiKeyLabel')}</label>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder="sk-..."
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {t('settingsApiKeyHelp')}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">{t('settingsModelNameLabel')}</label>
+              <input
+                type="text"
+                value={modelName}
+                onChange={(event) => setModelName(event.target.value)}
+                placeholder="gpt-4o-mini"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {t('settingsModelNameHelp')}
+              </p>
+            </div>
           </div>
-        </div>
+        </section>
 
         {message ? (
           <div
