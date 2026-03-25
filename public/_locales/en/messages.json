@@ -3,7 +3,7 @@
     "message": "Chatdown"
   },
   "extDescription": {
-    "message": "Convert AI chat conversations into Markdown articles"
+    "message": "Turn ChatGPT, Gemini, and DeepSeek conversations into clean Markdown articles with preview, editing, and export."
   },
   "actionTitle": {
     "message": "Open Chatdown"

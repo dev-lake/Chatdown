@@ -4,7 +4,7 @@ export const UI_LOCALE_PREFERENCE_KEY = 'uiLocalePreference';
 
 const enMessages = {
   appName: 'Chatdown',
-  appDescription: 'Convert AI chat conversations into Markdown articles',
+  appDescription: 'Turn ChatGPT, Gemini, and DeepSeek conversations into clean Markdown articles with preview, editing, and export.',
   localeAuto: 'Auto (Follow browser)',
   localeEnglish: 'English',
   localeSimplifiedChinese: '简体中文',
@@ -171,7 +171,7 @@ type MessageParams = Record<string, string | number>;
 
 const zhCnMessages: Record<MessageKey, string> = {
   appName: 'Chatdown',
-  appDescription: '将 AI 聊天对话转换为 Markdown 文章',
+  appDescription: '将 ChatGPT、Gemini 和 DeepSeek 对话转换为结构化 Markdown 文章，支持预览、编辑和导出。',
   localeAuto: '自动（跟随浏览器）',
   localeEnglish: 'English',
   localeSimplifiedChinese: '简体中文',
@@ -335,7 +335,7 @@ const zhCnMessages: Record<MessageKey, string> = {
 
 const zhTwMessages: Record<MessageKey, string> = {
   appName: 'Chatdown',
-  appDescription: '將 AI 聊天對話轉換為 Markdown 文章',
+  appDescription: '將 ChatGPT、Gemini 和 DeepSeek 對話轉換為結構化 Markdown 文章，支援預覽、編輯和匯出。',
   localeAuto: '自動（跟隨瀏覽器）',
   localeEnglish: 'English',
   localeSimplifiedChinese: '简体中文',
@@ -499,7 +499,7 @@ const zhTwMessages: Record<MessageKey, string> = {
 
 const jaMessages: Record<MessageKey, string> = {
   appName: 'Chatdown',
-  appDescription: 'AI チャットの会話を Markdown 記事に変換します',
+  appDescription: 'ChatGPT、Gemini、DeepSeek の会話を構造化された Markdown 記事に変換。プレビュー、編集、エクスポート対応。',
   localeAuto: '自動（ブラウザに合わせる）',
   localeEnglish: 'English',
   localeSimplifiedChinese: '简体中文',

@@ -3,7 +3,7 @@
     "message": "Chatdown"
   },
   "extDescription": {
-    "message": "AI チャットの会話を Markdown 記事に変換します"
+    "message": "ChatGPT、Gemini、DeepSeek の会話を構造化された Markdown 記事に変換。プレビュー、編集、エクスポート対応。"
   },
   "actionTitle": {
     "message": "Chatdown を開く"

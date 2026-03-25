@@ -3,7 +3,7 @@
     "message": "Chatdown"
   },
   "extDescription": {
-    "message": "将 AI 聊天对话转换为 Markdown 文章"
+    "message": "将 ChatGPT、Gemini 和 DeepSeek 对话转换为结构化 Markdown 文章，支持预览、编辑和导出。"
   },
   "actionTitle": {
     "message": "打开 Chatdown"

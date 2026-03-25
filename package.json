@@ -1,7 +1,7 @@
 {
   "name": "chatdown",
   "version": "1.0.0",
-  "description": "Convert AI chat conversations into Markdown articles",
+  "description": "Turn ChatGPT, Gemini, and DeepSeek conversations into clean Markdown articles with preview, editing, and export.",
   "type": "module",
   "scripts": {
     "dev": "vite",
