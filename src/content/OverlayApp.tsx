@@ -27,6 +27,8 @@ const DEFAULT_WIDTH = 620;
 const DEFAULT_HEIGHT = 760;
 const MIN_WIDTH = 360;
 const MIN_HEIGHT = 320;
+const CHATDOWN_BRAND = 'Chatdown';
+const MAX_FILENAME_BASE_LENGTH = 80;
 
 interface WindowRect {
   x: number;
@@ -150,6 +152,60 @@ function getDefaultWindowRect(): WindowRect {
     x: window.innerWidth - width - 24,
     y: window.innerHeight - height - 24,
   });
+}
+
+function extractHtmlArticleTitle(content: string): string | null {
+  if (typeof DOMParser === 'undefined') {
+    return null;
+  }
+
+  const document = new DOMParser().parseFromString(content, 'text/html');
+  const title = document.querySelector('h1')?.textContent?.trim();
+
+  return title || null;
+}
+
+function extractArticleTitle(content: string): string | null {
+  const normalizedContent = content.trim();
+
+  if (!normalizedContent) {
+    return null;
+  }
+
+  if (isHtmlContent(normalizedContent)) {
+    return extractHtmlArticleTitle(normalizedContent);
+  }
+
+  const titleMatch = normalizedContent.match(/^#\s+(.+)$/m);
+  const title = titleMatch?.[1]?.trim();
+
+  return title || null;
+}
+
+function getArticleTitle(content: string, locale: string, t: TranslateFn): string {
+  return extractArticleTitle(content)
+    || t('overlayDefaultArticleTitle', { date: new Date().toLocaleDateString(locale) });
+}
+
+function sanitizeFilenameBase(value: string): string {
+  const sanitized = value
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[\s._-]+|[\s._-]+$/g, '')
+    .slice(0, MAX_FILENAME_BASE_LENGTH)
+    .replace(/[\s._-]+$/g, '');
+
+  return sanitized || CHATDOWN_BRAND;
+}
+
+function buildMarkdownFilename(content: string, locale: string, t: TranslateFn): string {
+  const articleTitle = getArticleTitle(content, locale, t);
+  const filenameBase = /^chatdown(?:$|[\s_-]+)/i.test(articleTitle)
+    ? articleTitle
+    : `${CHATDOWN_BRAND}-${articleTitle}`;
+
+  return `${sanitizeFilenameBase(filenameBase)}.md`;
 }
 
 function applyArticleStateToView(
@@ -476,10 +532,9 @@ export default function OverlayApp() {
     const blob = new Blob([markdownContent], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const date = new Date().toISOString().split('T')[0];
 
     link.href = url;
-    link.download = `chatdown-${date}.md`;
+    link.download = buildMarkdownFilename(markdownContent, locale, t);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -593,10 +648,7 @@ export default function OverlayApp() {
     setExporting(true);
     setShowExportMenu(false);
 
-    const titleMatch = markdownContent.match(/^#\s+(.+)$/m);
-    const title = titleMatch
-      ? titleMatch[1]
-      : t('overlayDefaultArticleTitle', { date: new Date().toLocaleDateString(locale) });
+    const title = getArticleTitle(markdownContent, locale, t);
 
     try {
       const response = await chrome.runtime.sendMessage({

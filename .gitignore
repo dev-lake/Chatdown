@@ -1,6 +1,10 @@
 node_modules
 dist
+artifacts
 .DS_Store
 *.log
 .vscode
 .idea
+.claude
+.codex
+__pycache__

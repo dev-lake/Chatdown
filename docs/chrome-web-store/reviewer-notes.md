@@ -49,10 +49,6 @@ The Notion integration is optional and is not required to validate the main user
 
 ### Permissions justification
 
-`activeTab`
-
-- Needed to access the currently active supported AI chat tab after the user invokes Chatdown, so the extension can read the visible conversation and open the article workflow for that page.
-
 `storage`
 
 - Needed to store the user's local settings, language preference, generated article state, and cached results on the user's device.
