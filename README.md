@@ -13,6 +13,7 @@ Chatdown is a Chrome extension that transforms your AI chat conversations into w
 - 🎨 **Dual View** - Switch between rendered preview and raw Markdown
 - 📋 **Easy Export** - Copy to clipboard or download as .md file
 - 📤 **Notion Integration** - Export articles directly to your Notion workspace
+- 🪨 **Obsidian Export** - Open the Obsidian desktop app and create a Markdown note
 - 🔗 **Source Tracking** - Automatically includes original conversation URL
 - 🔌 **Your Own API** - Use any OpenAI-compatible API endpoint
 
@@ -69,6 +70,17 @@ To enable exporting articles to Notion:
 
 For detailed setup instructions, see [NOTION_SETUP.md](./NOTION_SETUP.md).
 
+### Optional: Obsidian Export
+
+To export articles directly into Obsidian:
+
+1. In Settings, scroll to "Obsidian Integration (Optional)"
+2. Enter your **Vault Name** exactly as it appears in Obsidian
+3. Optionally adjust **Folder Path**; it defaults to `Chatdown`
+4. Click "Save All Settings"
+
+When exporting, Chatdown copies the article content to the clipboard and opens the local `obsidian://new` protocol. If clipboard access fails, Chatdown falls back to passing the article content through the Obsidian URI.
+
 ## 📖 Usage
 
 1. **Start a conversation** on any supported AI platform
@@ -79,6 +91,7 @@ For detailed setup instructions, see [NOTION_SETUP.md](./NOTION_SETUP.md).
    - Copy to Clipboard
    - Download as Markdown
    - Export to Notion
+   - Export to Obsidian
 
 ### Advanced Features
 

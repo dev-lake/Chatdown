@@ -1,10 +1,10 @@
 # Privacy Policy for Chatdown
 
-Last updated: 2026-03-25
+Last updated: 2026-04-15
 
 This privacy policy applies to the Chatdown Chrome extension.
 
-Chatdown converts supported AI chat conversations into Markdown articles. It reads conversation content from supported pages only when the user actively invokes the extension, uses the user's configured model provider to generate article output, and optionally exports finished content to Notion.
+Chatdown converts supported AI chat conversations into Markdown articles. It reads conversation content from supported pages only when the user actively invokes the extension, uses the user's configured model provider to generate article output, and optionally exports finished content to Notion or the user's local Obsidian app.
 
 ## Who operates Chatdown
 
@@ -20,7 +20,7 @@ Chatdown may process the following data:
 
 - Conversation content from supported AI chat pages, including user prompts and model responses
 - The current conversation URL, which can be attached to the generated article as a source link
-- User-provided configuration data, including API base URL, API key, model name, interface language preference, and optional Notion integration token and database ID
+- User-provided configuration data, including API base URL, API key, model name, interface language preference, optional Notion integration token and database ID, and optional Obsidian vault and folder names
 - Generated article content, partial generation state, conversation hashes, selection state, and cached article results stored locally in the extension
 
 ## When Chatdown Processes Data
@@ -33,6 +33,7 @@ Chatdown processes data only for user-facing actions such as:
 - Testing the configured model connection
 - Testing the optional Notion connection
 - Exporting a generated article to Notion
+- Exporting a generated article to the user's local Obsidian app
 
 Chatdown is not designed to collect browsing activity in the background across unrelated sites.
 
@@ -46,6 +47,7 @@ Chatdown uses data to:
 - Cache previously generated results locally so identical conversations do not need to be regenerated
 - Remember local settings and language preferences
 - Export user-approved content to a Notion database when the user requests that action
+- Open the user's local Obsidian app and create a note when the user requests Obsidian export
 
 ## Where Data Is Sent
 
@@ -58,7 +60,9 @@ Depending on the features the user chooses, Chatdown may send data to:
 - The Notion API, if the user enables Notion integration
   - Sent data can include the Notion integration token, database ID, article title, article content, source URL, source platform, and timestamp
 
-These third-party services operate under their own terms and privacy policies.
+For Obsidian export, Chatdown uses the local `obsidian://` protocol. The article content is copied to the user's clipboard when possible, and the local Obsidian app reads it from there. If clipboard access fails, Chatdown falls back to including the article content in the local Obsidian URI. This action is initiated only when the user chooses Obsidian export.
+
+These third-party services and local apps operate under their own terms and privacy policies.
 
 ## Local Storage
 
@@ -68,6 +72,7 @@ Chatdown stores data in Chrome extension local storage on the user's device. Thi
 - API key
 - Model name
 - Notion integration token and database ID
+- Obsidian vault name and folder path
 - Interface language preference
 - Generated articles and cached results
 - Temporary article state needed to resume the current workspace
@@ -84,6 +89,7 @@ Chatdown does not transfer user data to third parties except as necessary to pro
 
 - The user-configured AI model provider used to generate article output
 - Notion, when the user explicitly enables and uses Notion export
+- The user's local Obsidian app, when the user explicitly enables and uses Obsidian export
 
 ## Data Retention and User Control
 
@@ -93,6 +99,7 @@ Users can control their data by:
 
 - Updating or removing saved settings in the extension
 - Avoiding optional features such as Notion export
+- Avoiding optional features such as Obsidian export
 - Removing the extension and its local data from Chrome
 
 ## Security

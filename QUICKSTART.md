@@ -38,6 +38,13 @@ Before using the extension, you need to configure your LLM API:
 4. Click "Test Connection" to verify your settings
 5. Click "Save Settings"
 
+Optional Obsidian export:
+
+1. In Settings, scroll to "Obsidian Integration (Optional)"
+2. Enter your Obsidian **Vault Name** exactly as shown in Obsidian
+3. Keep the default **Folder Path** (`Chatdown`) or enter another vault-relative folder
+4. Click "Save Settings"
+
 ## Usage
 
 1. Navigate to a supported AI chat platform:
@@ -56,6 +63,7 @@ Before using the extension, you need to configure your LLM API:
    - Switch between rendered preview and raw Markdown
    - Click "Copy to Clipboard" to copy the markdown
    - Click "Download Markdown" to save as a `.md` file
+   - Click "Export to Obsidian" to create a note in the Obsidian desktop app
    - Click "Regenerate" to create a new version
 
 ## Development Mode
@@ -85,6 +93,11 @@ Then load the `dist/` directory as an unpacked extension. Changes will be reflec
 - Test the connection using the "Test Connection" button
 - Check that your API key is valid and has sufficient credits
 - Ensure the API Base URL is correct (no trailing slash)
+
+### Obsidian export doesn't open
+- Make sure Obsidian is installed and the `obsidian://` protocol is allowed by your browser
+- Verify the Vault Name matches an existing Obsidian vault exactly
+- Check that the Folder Path exists or can be created in your vault
 
 ### No conversation found
 - Make sure you have messages in the chat

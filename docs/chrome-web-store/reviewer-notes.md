@@ -12,10 +12,13 @@ Supported sites:
 - https://chatgpt.com/*
 - https://gemini.google.com/*
 - https://chat.deepseek.com/*
+- https://www.doubao.com/*
+- https://doubao.com/*
 
 Optional integration:
 
 - https://api.notion.com/*
+- Local Obsidian app through the `obsidian://` protocol
 
 ## Core Review Flow
 
@@ -33,13 +36,19 @@ Optional Notion test:
 2. Verify the database contains the required properties: `source`, `platform`, and `timestamp`.
 3. Use the export action from the article workspace.
 
+Optional Obsidian test:
+
+1. Add a valid Obsidian vault name in settings. Folder path defaults to `Chatdown`.
+2. Use "Export to Obsidian" from the article workspace export menu.
+3. Confirm Chrome prompts for the external `obsidian://` protocol and Obsidian creates a note.
+
 ## Important Review Note
 
 The extension does not use a Chatdown account or a developer-operated backend.
 
 To test article generation, the reviewer needs valid credentials for any OpenAI-compatible API endpoint. If you want to reduce review friction, provide temporary review credentials in the Chrome Web Store test instructions before submission.
 
-The Notion integration is optional and is not required to validate the main user-facing purpose.
+The Notion and Obsidian integrations are optional and are not required to validate the main user-facing purpose.
 
 ## Recommended Privacy Practices Answers
 
@@ -61,10 +70,16 @@ Host permission for `https://api.notion.com/*`
 
 - Needed only for the optional Notion connection test and article export feature.
 
+External protocol `obsidian://`
+
+- Used only when the user explicitly chooses Obsidian export.
+- No host permission is required. Chrome may show an external application prompt.
+
 ### Remote code declaration
 
 - No. Chatdown does not execute remotely hosted JavaScript or other remote code.
 - Chatdown does send HTTPS requests to a user-configured OpenAI-compatible API endpoint and, optionally, to the Notion API, but those responses are treated as data and content, not executable code.
+- Obsidian export uses the local `obsidian://` protocol and clipboard handoff. It does not load remote code.
 
 ### Recommended data disclosures
 
@@ -76,6 +91,7 @@ Recommended data types to disclose:
 Rationale:
 
 - Authentication information: the user can enter an API key and an optional Notion integration token in settings
+- Other local settings: the user can enter optional Obsidian vault and folder names for local Obsidian export
 - Website content: the extension reads conversation content from supported AI chat pages and stores or exports generated article content based on that source material
 
 Recommended certifications:

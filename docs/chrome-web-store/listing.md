@@ -56,6 +56,7 @@ Key features:
 - Edit the generated content before exporting
 - Copy to clipboard or download as a Markdown file
 - Optionally export articles to a Notion database
+- Optionally open Obsidian and create a Markdown note
 - Reuse previous results with conversation-based caching
 - Keep control of your provider by using your own OpenAI-compatible API endpoint and key
 - Preserve the original conversation URL as the article source
@@ -77,6 +78,7 @@ Chatdown 可以把冗长的 AI 对话整理成结构化 Markdown 文章，方便
 - 生成后可继续编辑内容
 - 支持复制到剪贴板或下载为 Markdown 文件
 - 可选导出到 Notion 数据库
+- 可选调起 Obsidian 并创建 Markdown 笔记
 - 基于对话内容做缓存，避免重复生成
 - 使用你自己的兼容 OpenAI 的 API 地址和密钥
 - 自动保留原始对话链接作为文章来源
@@ -98,6 +100,7 @@ Chatdown 可以把冗長的 AI 對話整理成結構化 Markdown 文章，方便
 - 生成後可繼續編輯內容
 - 支援複製到剪貼簿或下載為 Markdown 檔案
 - 可選擇匯出到 Notion 資料庫
+- 可選擇開啟 Obsidian 並建立 Markdown 筆記
 - 依對話內容做快取，避免重複生成
 - 使用你自己的相容 OpenAI API 位址與金鑰
 - 自動保留原始對話連結作為文章來源
@@ -119,6 +122,7 @@ ChatGPT、Gemini、DeepSeek、Doubao の会話ページで Chatdown をクリッ
 - 生成後に内容をそのまま編集可能
 - クリップボードコピーと Markdown ファイル保存に対応
 - 必要に応じて Notion へエクスポート可能
+- 必要に応じて Obsidian を開き Markdown ノートを作成可能
 - 会話内容ベースのキャッシュで再生成を削減
 - OpenAI 互換の任意の API エンドポイントとキーを利用可能
 - 元の会話 URL を記事ソースとして保持
@@ -142,7 +146,7 @@ Suggested screenshot set:
 2. Round selection workflow with one-line summaries
 3. Streaming article generation in progress
 4. Finished article with preview and Markdown modes
-5. Export menu showing copy, Markdown download, and Notion export
+5. Export menu showing copy, Markdown download, Notion export, and Obsidian export
 
 Suggested captions:
 
@@ -150,7 +154,7 @@ Suggested captions:
 2. Pick only the conversation rounds you want to include
 3. Watch the article stream in as it is generated
 4. Review, edit, and switch between preview and Markdown
-5. Copy, download, or send the final article to Notion
+5. Copy, download, send the final article to Notion, or open it in Obsidian
 
 ## Promo Asset Copy
 
