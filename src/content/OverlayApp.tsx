@@ -39,6 +39,7 @@ interface WindowRect {
 }
 
 type ResizeDirection = 'top' | 'right' | 'bottom' | 'left';
+type ExportTarget = 'notion' | 'obsidian' | null;
 
 interface ResizeState {
   direction: ResizeDirection;
@@ -313,6 +314,7 @@ export default function OverlayApp() {
   const [streamingContent, setStreamingContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportTarget, setExportTarget] = useState<ExportTarget>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showRegenerateMenu, setShowRegenerateMenu] = useState(false);
   const [selectedRoundIds, setSelectedRoundIds] = useState<string[]>([]);
@@ -677,6 +679,7 @@ export default function OverlayApp() {
     }
 
     setExporting(true);
+    setExportTarget('notion');
     setShowExportMenu(false);
 
     const title = getArticleTitle(markdownContent, locale, t);
@@ -697,6 +700,60 @@ export default function OverlayApp() {
       window.alert(t('overlayExportToNotionFailed'));
     } finally {
       setExporting(false);
+      setExportTarget(null);
+    }
+  };
+
+  const handleExportToObsidian = async () => {
+    if (!markdownContent) {
+      return;
+    }
+
+    setExporting(true);
+    setExportTarget('obsidian');
+    setShowExportMenu(false);
+
+    const title = getArticleTitle(markdownContent, locale, t);
+    let useClipboard = false;
+    let hasObsidianVault = false;
+
+    try {
+      const settings = await chrome.storage.local.get('obsidianVault');
+      hasObsidianVault = typeof settings.obsidianVault === 'string'
+        && settings.obsidianVault.trim().length > 0;
+    } catch {
+      hasObsidianVault = false;
+    }
+
+    if (hasObsidianVault && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(markdownContent);
+        useClipboard = true;
+      } catch {
+        useClipboard = false;
+      }
+    }
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'exportToObsidian',
+        articleTitle: title,
+        articleContent: markdownContent,
+        useClipboard,
+      });
+
+      if (response?.success) {
+        window.alert(t('overlayExportToObsidianSuccess', { path: response.article || '' }));
+      } else {
+        window.alert(t('overlayExportToObsidianFailedWithReason', {
+          error: response?.error || t('commonUnknownError'),
+        }));
+      }
+    } catch {
+      window.alert(t('overlayExportToObsidianFailed'));
+    } finally {
+      setExporting(false);
+      setExportTarget(null);
     }
   };
 
@@ -725,6 +782,8 @@ export default function OverlayApp() {
     setShowExportMenu(false);
     setShowRegenerateMenu(false);
     setIsEditing(false);
+    setExporting(false);
+    setExportTarget(null);
   };
 
   const title = getOverlayTitle(articleState, isEditing, markdownContent, t);
@@ -898,7 +957,9 @@ export default function OverlayApp() {
             ) : articleState?.phase === 'generating' ? (
               <span className="chatdown-status">{t('overlayStatusGenerating')}</span>
             ) : exporting ? (
-              <span className="chatdown-status">{t('overlayStatusExporting')}</span>
+              <span className="chatdown-status">
+                {t(exportTarget === 'obsidian' ? 'overlayStatusExportingToObsidian' : 'overlayStatusExporting')}
+              </span>
             ) : markdownContent ? (
               <>
                 <span className="chatdown-status">{t('commonReady')}</span>
@@ -953,6 +1014,9 @@ export default function OverlayApp() {
                         </button>
                         <button type="button" className="chatdown-menu__item" onClick={handleExportToNotion}>
                           {t('overlayExportToNotion')}
+                        </button>
+                        <button type="button" className="chatdown-menu__item" onClick={handleExportToObsidian}>
+                          {t('overlayExportToObsidian')}
                         </button>
                       </div>
                     ) : null}

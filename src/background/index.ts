@@ -6,10 +6,11 @@ import type {
   ConversationRound,
   GenerationMode,
   Message,
+  ObsidianConfig,
   Platform,
 } from '../types';
 import { getCurrentLocaleContext, type TranslateFn } from '../i18n/core';
-import { getApiConfig, getNotionConfig } from './storage';
+import { getApiConfig, getNotionConfig, getObsidianConfig } from './storage';
 import {
   generateArticle,
   summarizeConversationRounds,
@@ -20,6 +21,7 @@ import { exportToNotion, testNotionConnection } from './notion-client';
 const ARTICLE_STATE_KEY_PREFIX = 'articleState:';
 const ARTICLE_CACHE_KEY_PREFIX = 'articleCache:';
 const ROUND_PREVIEW_LENGTH = 180;
+const MAX_OBSIDIAN_FILE_NAME_BASE_LENGTH = 80;
 
 interface ArticleCacheEntry {
   article: string;
@@ -136,6 +138,67 @@ function appendSourceUrl(article: string, sourceUrl: string): string {
   }
 
   return `${article}\n\n---\n\n[${sourceUrl}](${sourceUrl})`;
+}
+
+function sanitizeObsidianPathSegment(value: string): string {
+  const sanitized = value
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[\s._-]+|[\s._-]+$/g, '');
+
+  return sanitized || 'Untitled';
+}
+
+function sanitizeObsidianFileNameBase(value: string): string {
+  return sanitizeObsidianPathSegment(value)
+    .slice(0, MAX_OBSIDIAN_FILE_NAME_BASE_LENGTH)
+    .replace(/[\s._-]+$/g, '') || 'Untitled';
+}
+
+function normalizeObsidianFolder(folder: string): string {
+  return folder
+    .replace(/\\/g, '/')
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment && segment !== '.' && segment !== '..')
+    .map(sanitizeObsidianPathSegment)
+    .join('/');
+}
+
+function padDatePart(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+function getObsidianTimestamp(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = padDatePart(date.getMonth() + 1);
+  const day = padDatePart(date.getDate());
+  const hours = padDatePart(date.getHours());
+  const minutes = padDatePart(date.getMinutes());
+  const seconds = padDatePart(date.getSeconds());
+
+  return `${year}${month}${day}-${hours}${minutes}${seconds}`;
+}
+
+function buildObsidianNewNoteUrl(
+  config: ObsidianConfig,
+  articleTitle: string,
+  articleContent: string,
+  useClipboard: boolean
+): { url: string; filePath: string } {
+  const folder = normalizeObsidianFolder(config.folder);
+  const noteName = `${sanitizeObsidianFileNameBase(articleTitle)}-${getObsidianTimestamp()}`;
+  const filePath = folder ? `${folder}/${noteName}` : noteName;
+  let url = `obsidian://new?file=${encodeURIComponent(filePath)}&vault=${encodeURIComponent(config.vault.trim())}`;
+
+  if (useClipboard) {
+    url += '&clipboard';
+  } else {
+    url += `&content=${encodeURIComponent(articleContent)}`;
+  }
+
+  return { url, filePath };
 }
 
 function getTabIdFromSender(
@@ -639,6 +702,11 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
+    if (message.action === 'exportToObsidian') {
+      void handleExportToObsidian(message, sender, sendResponse);
+      return true;
+    }
+
     return false;
   }
 );
@@ -1038,6 +1106,48 @@ async function handleExportToNotion(
   } catch (error) {
     sendResponse({
       error: error instanceof Error ? error.message : t('commonUnknownError'),
+    });
+  }
+}
+
+async function handleExportToObsidian(
+  message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: ChromeResponse) => void
+) {
+  const { t } = await getCurrentLocaleContext();
+  const tabId = getTabIdFromSender(sender, sendResponse, t);
+  if (tabId === null) {
+    return;
+  }
+
+  try {
+    const config = await getObsidianConfig();
+
+    if (!config || !config.vault.trim()) {
+      sendResponse({ error: t('backgroundObsidianNotConfigured') });
+      return;
+    }
+
+    if (!message.articleTitle || !message.articleContent) {
+      sendResponse({ error: t('backgroundNoArticleContentToExport') });
+      return;
+    }
+
+    const { url, filePath } = buildObsidianNewNoteUrl(
+      config,
+      message.articleTitle,
+      message.articleContent,
+      Boolean(message.useClipboard)
+    );
+
+    await chrome.tabs.update(tabId, { url });
+    sendResponse({ success: true, article: filePath });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : t('commonUnknownError');
+
+    sendResponse({
+      error: t('backgroundFailedToOpenObsidian', { error: errorMessage }),
     });
   }
 }

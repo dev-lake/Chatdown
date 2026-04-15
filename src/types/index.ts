@@ -42,6 +42,11 @@ export interface NotionConfig {
   databaseId: string;
 }
 
+export interface ObsidianConfig {
+  vault: string;
+  folder: string;
+}
+
 export interface NotionBlock {
   object: 'block';
   type: string;
@@ -61,6 +66,7 @@ export interface ChromeMessage {
     | 'getArticleState'
     | 'regenerateArticle'
     | 'exportToNotion'
+    | 'exportToObsidian'
     | 'testNotionConnection'
     | 'saveArticleContent';
   messages?: Message[];
@@ -72,6 +78,7 @@ export interface ChromeMessage {
   notionConfig?: NotionConfig;
   articleTitle?: string;
   articleContent?: string;
+  useClipboard?: boolean;
   mode?: GenerationMode;
   selectedRoundIds?: string[];
   state?: ArticleState;

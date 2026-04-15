@@ -1,4 +1,6 @@
-import type { ApiConfig, NotionConfig } from '../types';
+import type { ApiConfig, NotionConfig, ObsidianConfig } from '../types';
+
+const DEFAULT_OBSIDIAN_FOLDER = 'Chatdown';
 
 const STORAGE_KEYS = {
   API_BASE_URL: 'apiBaseUrl',
@@ -6,6 +8,8 @@ const STORAGE_KEYS = {
   MODEL_NAME: 'modelName',
   NOTION_TOKEN: 'notionIntegrationToken',
   NOTION_DATABASE_ID: 'notionDatabaseId',
+  OBSIDIAN_VAULT: 'obsidianVault',
+  OBSIDIAN_FOLDER: 'obsidianFolder',
 };
 
 export async function getApiConfig(): Promise<ApiConfig | null> {
@@ -54,5 +58,30 @@ export async function setNotionConfig(config: NotionConfig): Promise<void> {
   await chrome.storage.local.set({
     [STORAGE_KEYS.NOTION_TOKEN]: config.integrationToken,
     [STORAGE_KEYS.NOTION_DATABASE_ID]: config.databaseId,
+  });
+}
+
+export async function getObsidianConfig(): Promise<ObsidianConfig | null> {
+  const result = await chrome.storage.local.get([
+    STORAGE_KEYS.OBSIDIAN_VAULT,
+    STORAGE_KEYS.OBSIDIAN_FOLDER,
+  ]);
+
+  if (typeof result.obsidianVault !== 'string' || !result.obsidianVault.trim()) {
+    return null;
+  }
+
+  return {
+    vault: result.obsidianVault,
+    folder: typeof result.obsidianFolder === 'string' && result.obsidianFolder.trim()
+      ? result.obsidianFolder
+      : DEFAULT_OBSIDIAN_FOLDER,
+  };
+}
+
+export async function setObsidianConfig(config: ObsidianConfig): Promise<void> {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.OBSIDIAN_VAULT]: config.vault,
+    [STORAGE_KEYS.OBSIDIAN_FOLDER]: config.folder,
   });
 }

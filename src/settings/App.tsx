@@ -3,6 +3,10 @@ import type { ApiConfig, ChromeMessage, ChromeResponse, LocalePreference } from 
 import { LOCALE_OPTIONS } from '../i18n/core';
 import { useI18n } from '../i18n/react';
 
+const DEFAULT_OBSIDIAN_FOLDER = 'Chatdown';
+
+type StatusMessage = { type: 'success' | 'error'; text: string };
+
 export default function App() {
   const { locale, preference, setPreference, t } = useI18n();
   const [apiBaseUrl, setApiBaseUrl] = useState('');
@@ -10,11 +14,14 @@ export default function App() {
   const [modelName, setModelName] = useState('');
   const [notionToken, setNotionToken] = useState('');
   const [notionDatabaseId, setNotionDatabaseId] = useState('');
+  const [obsidianVault, setObsidianVault] = useState('');
+  const [obsidianFolder, setObsidianFolder] = useState(DEFAULT_OBSIDIAN_FOLDER);
   const [testing, setTesting] = useState(false);
   const [testingNotion, setTestingNotion] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [notionMessage, setNotionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<StatusMessage | null>(null);
+  const [notionMessage, setNotionMessage] = useState<StatusMessage | null>(null);
+  const [saveMessage, setSaveMessage] = useState<StatusMessage | null>(null);
   const [showNotionToken, setShowNotionToken] = useState(false);
 
   useEffect(() => {
@@ -29,6 +36,7 @@ export default function App() {
   useEffect(() => {
     setMessage(null);
     setNotionMessage(null);
+    setSaveMessage(null);
   }, [locale]);
 
   const loadSettings = async () => {
@@ -38,6 +46,8 @@ export default function App() {
       'modelName',
       'notionIntegrationToken',
       'notionDatabaseId',
+      'obsidianVault',
+      'obsidianFolder',
     ]);
 
     if (result.apiBaseUrl) {
@@ -54,6 +64,12 @@ export default function App() {
     }
     if (result.notionDatabaseId) {
       setNotionDatabaseId(result.notionDatabaseId);
+    }
+    if (typeof result.obsidianVault === 'string') {
+      setObsidianVault(result.obsidianVault);
+    }
+    if (typeof result.obsidianFolder === 'string' && result.obsidianFolder.trim()) {
+      setObsidianFolder(result.obsidianFolder);
     }
   };
 
@@ -135,23 +151,35 @@ export default function App() {
 
   const handleSave = async () => {
     if (!apiBaseUrl || !apiKey || !modelName) {
-      setMessage({ type: 'error', text: t('settingsValidationRequired') });
+      setSaveMessage({ type: 'error', text: t('settingsValidationRequired') });
       return;
     }
 
     setSaving(true);
-    setMessage(null);
+    setSaveMessage(null);
 
-    await chrome.storage.local.set({
-      apiBaseUrl,
-      apiKey,
-      modelName,
-      notionIntegrationToken: notionToken,
-      notionDatabaseId,
-    });
+    try {
+      await chrome.storage.local.set({
+        apiBaseUrl,
+        apiKey,
+        modelName,
+        notionIntegrationToken: notionToken,
+        notionDatabaseId,
+        obsidianVault: obsidianVault.trim(),
+        obsidianFolder: obsidianFolder.trim() || DEFAULT_OBSIDIAN_FOLDER,
+      });
 
-    setSaving(false);
-    setMessage({ type: 'success', text: t('settingsSaved') });
+      setSaveMessage({ type: 'success', text: t('settingsSaved') });
+    } catch (error) {
+      setSaveMessage({
+        type: 'error',
+        text: t('settingsSaveFailed', {
+          error: error instanceof Error ? error.message : t('commonUnknownError'),
+        }),
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -404,6 +432,57 @@ export default function App() {
           </div>
         </div>
 
+        <div className="mt-8 pt-8 border-t">
+          <h2 className="text-2xl font-bold mb-2">{t('settingsObsidianHeading')}</h2>
+          <p className="text-gray-600 mb-4">
+            {t('settingsObsidianDescription')}
+          </p>
+
+          <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">{t('settingsObsidianGuideTitle')}</h3>
+            <ol className="text-sm text-gray-800 space-y-2 list-decimal list-inside">
+              <li>
+                <span className="font-medium">{t('settingsObsidianGuideVault')}</span>{' '}
+                {t('settingsObsidianGuideVaultBody')}
+              </li>
+              <li>
+                <span className="font-medium">{t('settingsObsidianGuideFolder')}</span>{' '}
+                {t('settingsObsidianGuideFolderBody')}
+              </li>
+            </ol>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">{t('settingsObsidianVaultLabel')}</label>
+              <input
+                type="text"
+                value={obsidianVault}
+                onChange={(event) => setObsidianVault(event.target.value)}
+                placeholder="My Vault"
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {t('settingsObsidianVaultHelp')}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">{t('settingsObsidianFolderLabel')}</label>
+              <input
+                type="text"
+                value={obsidianFolder}
+                onChange={(event) => setObsidianFolder(event.target.value)}
+                placeholder={DEFAULT_OBSIDIAN_FOLDER}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {t('settingsObsidianFolderHelp')}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="mt-8 pt-6 border-t">
           <button
             onClick={handleSave}
@@ -419,6 +498,18 @@ export default function App() {
               t('settingsSaveAll')
             )}
           </button>
+
+          {saveMessage ? (
+            <div
+              className={`mt-4 p-3 rounded ${
+                saveMessage.type === 'success'
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-red-100 text-red-800'
+              }`}
+            >
+              {saveMessage.text}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
