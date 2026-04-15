@@ -44,17 +44,18 @@ Before using the extension, you need to configure your LLM API:
    - ChatGPT: https://chat.openai.com or https://chatgpt.com
    - Google Gemini: https://gemini.google.com
    - DeepSeek: https://chat.deepseek.com
+   - Doubao: https://www.doubao.com
 
 2. Have a conversation with the AI
 
-3. Click the "Generate Article" button (appears in bottom-right corner)
+3. Click the `Chatdown` button in the page header or floating action area
 
 4. Wait for the article to be generated
 
-5. In the modal that appears:
-   - Switch between "Preview" and "Markdown" tabs
+5. In the article workspace / side panel:
+   - Switch between rendered preview and raw Markdown
    - Click "Copy to Clipboard" to copy the markdown
-   - Click "Download" to save as a `.md` file
+   - Click "Download Markdown" to save as a `.md` file
    - Click "Regenerate" to create a new version
 
 ## Development Mode
@@ -74,7 +75,7 @@ Then load the `dist/` directory as an unpacked extension. Changes will be reflec
 - Check that the `dist/` directory exists
 - Verify all icon files are present in `public/icons/`
 
-### "Generate Article" button doesn't appear
+### `Chatdown` button doesn't appear
 - Verify you're on a supported platform
 - Check the browser console for errors
 - Try refreshing the page

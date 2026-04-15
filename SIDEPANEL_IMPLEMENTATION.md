@@ -45,7 +45,7 @@
 
 1. 构建扩展: `npm run build`
 2. 在 Chrome 中加载 `dist/` 目录
-3. 访问支持的 AI 聊天平台（ChatGPT、Gemini、DeepSeek）
+3. 访问支持的 AI 聊天平台（ChatGPT、Gemini、DeepSeek、豆包）
 4. 点击页面右侧的 📝 按钮
 5. 观察浏览器右侧打开原生侧边栏
 6. 等待文章生成完成

@@ -16,6 +16,7 @@ import {
   chatdownEvents,
   emitChatdownVisibilityChange,
 } from './events';
+import { detectPlatform, getParser } from './parsers';
 
 marked.setOptions({
   breaks: true,
@@ -206,6 +207,34 @@ function buildMarkdownFilename(content: string, locale: string, t: TranslateFn):
     : `${CHATDOWN_BRAND}-${articleTitle}`;
 
   return `${sanitizeFilenameBase(filenameBase)}.md`;
+}
+
+function getRegenerationContext(articleState: ArticleState | null): Pick<ChromeMessage, 'messages' | 'sourceUrl' | 'platform'> {
+  const detectedPlatform = detectPlatform();
+  const parser = getParser(detectedPlatform);
+
+  if (parser) {
+    try {
+      const messages = parser.parse();
+      if (messages.length > 0) {
+        return {
+          messages,
+          sourceUrl: window.location.href,
+          platform: detectedPlatform,
+        };
+      }
+    } catch {
+      // Fall back to the persisted article state below.
+    }
+  }
+
+  return {
+    messages: articleState?.messages ?? [],
+    sourceUrl: articleState?.sourceUrl || window.location.href,
+    platform: articleState?.platform && articleState.platform !== 'unknown'
+      ? articleState.platform
+      : detectedPlatform,
+  };
 }
 
 function applyArticleStateToView(
@@ -588,9 +617,11 @@ export default function OverlayApp() {
   const handleRegenerate = async (mode: GenerationMode) => {
     try {
       setShowRegenerateMenu(false);
+      const regenerationContext = getRegenerationContext(articleState);
       const response = await chrome.runtime.sendMessage({
         action: 'regenerateArticle',
         mode,
+        ...regenerationContext,
       });
 
       if (response?.state) {

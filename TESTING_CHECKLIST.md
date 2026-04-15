@@ -29,7 +29,7 @@
 ## Functional Testing
 
 ### Basic Export
-- [ ] Open ChatGPT/Gemini/DeepSeek
+- [ ] Open ChatGPT/Gemini/DeepSeek/Doubao
 - [ ] Start a conversation with multiple messages
 - [ ] Click Chatdown button
 - [ ] Wait for article generation to complete
@@ -102,6 +102,7 @@
 - [ ] Test on ChatGPT (chatgpt.com)
 - [ ] Test on Google Gemini
 - [ ] Test on DeepSeek
+- [ ] Test on Doubao
 
 ## Documentation
 - [ ] README.md mentions Notion integration

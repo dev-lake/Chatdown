@@ -6,7 +6,7 @@ Chatdown is a Chrome extension that transforms your AI chat conversations into w
 
 ## ✨ Features
 
-- 🤖 **Multi-Platform Support** - Works with ChatGPT, Google Gemini, and DeepSeek
+- 🤖 **Multi-Platform Support** - Works with ChatGPT, Google Gemini, DeepSeek, and Doubao
 - 🔄 **Streaming Generation** - Real-time article generation with live preview
 - ✏️ **Typora-Style Editor** - Edit generated articles with a clean, distraction-free interface
 - 💾 **Smart Caching** - Automatically caches articles based on conversation content
@@ -93,6 +93,7 @@ For detailed setup instructions, see [NOTION_SETUP.md](./NOTION_SETUP.md).
 | ChatGPT | chat.openai.com, chatgpt.com | ✅ |
 | Google Gemini | gemini.google.com | ✅ |
 | DeepSeek | chat.deepseek.com | ✅ |
+| Doubao | www.doubao.com | ✅ |
 
 ## 🛠️ Development
 

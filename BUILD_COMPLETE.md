@@ -55,14 +55,15 @@ dist/
    - ChatGPT: https://chat.openai.com or https://chatgpt.com
    - Google Gemini: https://gemini.google.com
    - DeepSeek: https://chat.deepseek.com
+   - Doubao: https://www.doubao.com
 
 2. Have a conversation with the AI
 
-3. Look for the "Generate Article" button in the bottom-right corner
+3. Look for the `Chatdown` button in the page header or floating action area
 
 4. Click it to generate a Markdown article from your conversation
 
-5. Use the modal to:
+5. Use the article workspace / side panel to:
    - Preview the article
    - View the raw Markdown
    - Copy to clipboard
@@ -86,7 +87,7 @@ Then reload the extension in Chrome when you make changes.
 - Verify all files are present
 - Check Chrome's extension error messages
 
-### "Generate Article" button doesn't appear
+### `Chatdown` button doesn't appear
 - Verify you're on a supported platform
 - Check the browser console for errors (F12)
 - Try refreshing the page
@@ -108,7 +109,7 @@ Then reload the extension in Chrome when you make changes.
 ✅ Complete Chrome Extension (Manifest v3)
 ✅ TypeScript + React + Vite + Tailwind CSS
 ✅ Background service worker for API calls
-✅ Content scripts for ChatGPT, Gemini, DeepSeek
+✅ Content scripts for ChatGPT, Gemini, DeepSeek, Doubao
 ✅ Settings page with API configuration
 ✅ Popup with platform information
 ✅ Article preview modal with Markdown support

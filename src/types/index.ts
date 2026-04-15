@@ -85,7 +85,7 @@ export interface ChromeResponse {
   state?: ArticleState;
 }
 
-export type Platform = 'chatgpt' | 'gemini' | 'deepseek' | 'unknown';
+export type Platform = 'chatgpt' | 'gemini' | 'deepseek' | 'doubao' | 'unknown';
 
 export interface ChatParser {
   parse(): Message[];

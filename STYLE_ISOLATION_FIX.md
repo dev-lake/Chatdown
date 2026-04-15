@@ -66,6 +66,7 @@ container.style.cssText = 'all: initial; display: block;';
    - ChatGPT: https://chat.openai.com
    - Gemini: https://gemini.google.com
    - DeepSeek: https://chat.deepseek.com
+   - 豆包: https://www.doubao.com
 
 3. 验证：
    - 页面原有样式应该保持不变

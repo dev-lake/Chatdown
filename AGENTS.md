@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Project Overview
 
-Chatdown is a Chrome extension (Manifest v3) that converts AI chat conversations into Markdown articles. It injects a button into supported AI chat platforms (ChatGPT, Gemini, DeepSeek), parses the conversation from the DOM, sends it to an LLM API, and displays the generated article in a side panel.
+Chatdown is a Chrome extension (Manifest v3) that converts AI chat conversations into Markdown articles. It injects a button into supported AI chat platforms (ChatGPT, Gemini, DeepSeek, Doubao), parses the conversation from the DOM, sends it to an LLM API, and displays the generated article in a side panel.
 
 ## Build Commands
 
@@ -61,6 +61,7 @@ Each supported platform has a dedicated parser in `src/content/parsers/`:
 - **ChatGPT** (`chatgpt.ts`): Parses OpenAI chat interface
 - **Gemini** (`gemini.ts`): Parses Google Gemini interface
 - **DeepSeek** (`deepseek.ts`): Parses DeepSeek chat interface
+- **Doubao** (`doubao.ts`): Parses Doubao chat interface
 
 The parser factory (`parsers/index.ts`) detects the current platform by hostname and returns the appropriate parser. Each parser implements the `ChatParser` interface and extracts `Message[]` from the DOM.
 

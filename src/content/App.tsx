@@ -17,6 +17,7 @@ export default function App() {
   const buttonGroupRef = useRef<HTMLDivElement | null>(null);
   const toggleButtonRef = useRef<HTMLButtonElement | null>(null);
   const menuPanelRef = useRef<HTMLDivElement | null>(null);
+  const primaryButtonLabel = loading ? t('contentButtonTitleReopen') : t('contentButtonTitleGenerateFull');
 
   useEffect(() => {
     const loadArticleState = async () => {
@@ -172,12 +173,17 @@ export default function App() {
 
   return (
     <>
-      <div className="chatdown-split-button" ref={buttonGroupRef} lang={locale}>
+      <div
+        className="chatdown-split-button"
+        ref={buttonGroupRef}
+        lang={locale}
+      >
         <button
           type="button"
           onClick={handlePrimaryButtonClick}
           className="btn btn-ghost text-token-text-primary chatdown-split-button__main"
-          title={loading ? t('contentButtonTitleReopen') : t('contentButtonTitleGenerateFull')}
+          title={primaryButtonLabel}
+          aria-label={primaryButtonLabel}
           aria-busy={loading}
         >
           <div className="flex w-full items-center justify-center gap-1.5">
@@ -192,7 +198,7 @@ export default function App() {
                 <path d="M7 8h10M7 12h10M7 16h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             )}
-            <span>{t('appName')}</span>
+            <span className="chatdown-split-button__label">{t('appName')}</span>
           </div>
         </button>
 
@@ -203,6 +209,7 @@ export default function App() {
           onClick={() => setShowMenu((current) => !current)}
           aria-label={t('contentGenerationModeAria')}
           aria-expanded={showMenu}
+          title={t('contentGenerationModeAria')}
           disabled={loading}
         >
           <svg className="icon-sm" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

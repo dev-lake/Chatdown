@@ -1,6 +1,8 @@
 import { createWriteStream } from 'node:fs';
-import { access, mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { access, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { stdin as input, stdout as output } from 'node:process';
+import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 
 import archiver from 'archiver';
@@ -10,6 +12,10 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
 const artifactsDir = path.join(rootDir, 'artifacts');
+const packageJsonPath = path.join(rootDir, 'package.json');
+const packageLockPath = path.join(rootDir, 'package-lock.json');
+const manifestPath = path.join(rootDir, 'public', 'manifest.json');
+const distManifestPath = path.join(distDir, 'manifest.json');
 
 function formatBytes(bytes) {
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -25,10 +31,77 @@ function formatBytes(bytes) {
 }
 
 async function readPackageInfo() {
-  const packageJsonPath = path.join(rootDir, 'package.json');
   const packageJson = await readFile(packageJsonPath, 'utf8');
 
   return JSON.parse(packageJson);
+}
+
+async function readJson(filePath) {
+  return JSON.parse(await readFile(filePath, 'utf8'));
+}
+
+async function writeJson(filePath, value) {
+  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function isValidExtensionVersion(version) {
+  if (!/^\d+(?:\.\d+){0,3}$/.test(version)) {
+    return false;
+  }
+
+  return version
+    .split('.')
+    .every((part) => Number.parseInt(part, 10) <= 65535);
+}
+
+async function promptForVersion(currentVersion) {
+  if (!input.isTTY || !output.isTTY) {
+    return currentVersion;
+  }
+
+  const rl = createInterface({ input, output });
+
+  try {
+    while (true) {
+      const answer = await rl.question(`Extension version [${currentVersion}]: `);
+      const nextVersion = answer.trim() || currentVersion;
+
+      if (isValidExtensionVersion(nextVersion)) {
+        return nextVersion;
+      }
+
+      console.error('Invalid version. Use 1 to 4 numeric parts, e.g. 1.0.1 or 1.2.3.');
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+async function syncVersion(nextVersion) {
+  const packageJson = await readJson(packageJsonPath);
+  const packageLock = await readJson(packageLockPath);
+  const manifest = await readJson(manifestPath);
+
+  packageJson.version = nextVersion;
+  packageLock.version = nextVersion;
+  if (packageLock.packages?.['']) {
+    packageLock.packages[''].version = nextVersion;
+  }
+  manifest.version = nextVersion;
+
+  await writeJson(packageJsonPath, packageJson);
+  await writeJson(packageLockPath, packageLock);
+  await writeJson(manifestPath, manifest);
+
+  try {
+    const distManifest = await readJson(distManifestPath);
+    distManifest.version = nextVersion;
+    await writeJson(distManifestPath, distManifest);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      throw error;
+    }
+  }
 }
 
 async function createZipArchive(outputPath) {
@@ -62,7 +135,15 @@ async function createZipArchive(outputPath) {
 async function main() {
   await access(distDir);
 
-  const { name, version } = await readPackageInfo();
+  const currentPackageInfo = await readPackageInfo();
+  const version = await promptForVersion(currentPackageInfo.version);
+
+  if (version !== currentPackageInfo.version) {
+    await syncVersion(version);
+    console.log(`Updated version to ${version}`);
+  }
+
+  const { name } = await readPackageInfo();
   const zipFileName = `${name}-v${version}.zip`;
   const outputPath = path.join(artifactsDir, zipFileName);
 

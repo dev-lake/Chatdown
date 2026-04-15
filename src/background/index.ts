@@ -849,10 +849,16 @@ async function handleRegenerateArticle(
 
   try {
     const currentState = await getArticleStateForTab(tabId);
+    const messages = message.messages?.length ? message.messages : currentState.messages;
+    const sourceUrl = message.sourceUrl ?? currentState.sourceUrl;
+    const platform = message.platform ?? currentState.platform;
 
-    if (currentState.messages.length === 0) {
+    if (messages.length === 0) {
       const errorMessage = t('backgroundNoConversationToRegenerate');
-      const state = await publishError(tabId, t, errorMessage);
+      const state = await publishError(tabId, t, errorMessage, {
+        sourceUrl,
+        platform,
+      });
       sendResponse({ error: errorMessage, state });
       return;
     }
@@ -863,10 +869,10 @@ async function handleRegenerateArticle(
       const nextState = await runArticleGeneration(
         tabId,
         {
-          allMessages: currentState.messages,
-          articleMessages: currentState.messages,
-          sourceUrl: currentState.sourceUrl,
-          platform: currentState.platform,
+          allMessages: messages,
+          articleMessages: messages,
+          sourceUrl,
+          platform,
           mode: 'full',
           rounds: [],
           selectedRoundIds: [],
@@ -882,9 +888,9 @@ async function handleRegenerateArticle(
     const previousVisibleState = isVisibleArticleState(currentState) ? currentState : null;
     const result = await preparePartialSelection(
       tabId,
-      currentState.messages,
-      currentState.sourceUrl,
-      currentState.platform,
+      messages,
+      sourceUrl,
+      platform,
       previousVisibleState,
       t
     );

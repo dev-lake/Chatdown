@@ -7,12 +7,14 @@ import { detectPlatform } from './parsers';
 
 const BUTTON_ROOT_ID = 'chatdown-root';
 const OVERLAY_ROOT_ID = 'chatdown-overlay-root';
+const DEEPSEEK_ACTIONS_WRAPPER_ID = 'chatdown-deepseek-actions';
 
 // Platform-specific selectors for button injection
 const PLATFORM_SELECTORS = {
   chatgpt: '#conversation-header-actions',
   gemini: '.right-section, .buttons-container',
   deepseek: '._2be88ba',
+  doubao: 'button[data-testid="thread_share_btn_right_side"], [data-testid="chat_header_download_client"], button[data-testid="create_conversation_button"]',
 };
 
 let overlayRoot: Root | null = null;
@@ -20,6 +22,33 @@ let overlayContainer: HTMLElement | null = null;
 let deepSeekAnchorRetries = 0;
 const MAX_DEEPSEEK_ANCHOR_RETRIES = 30;
 let deepSeekAlignScheduled = false;
+let doubaoAnchorRetries = 0;
+const MAX_DOUBAO_ANCHOR_RETRIES = 30;
+
+function configureButtonContainer(container: HTMLDivElement, platform: keyof typeof PLATFORM_SELECTORS) {
+  container.dataset.platform = platform;
+
+  if (platform !== 'deepseek' && platform !== 'doubao') {
+    container.style.display = 'inline-block';
+    return;
+  }
+
+  container.style.display = 'inline-flex';
+  container.style.alignItems = 'center';
+  container.style.flex = '0 0 auto';
+  container.style.alignSelf = 'center';
+}
+
+function configureFloatingButtonContainer(container: HTMLDivElement) {
+  container.dataset.platform = 'doubao';
+  container.dataset.position = 'floating';
+  container.style.position = 'fixed';
+  container.style.top = '20px';
+  container.style.right = '20px';
+  container.style.zIndex = '2147483645';
+  container.style.display = 'inline-flex';
+  container.style.alignItems = 'center';
+}
 
 function ensureOverlayRoot() {
   if (!document.body) {
@@ -94,6 +123,27 @@ function isClickableElement(element: Element): boolean {
 
   const style = window.getComputedStyle(element);
   return style.cursor === 'pointer';
+}
+
+function findVisibleElementBySelectors(selectors: string[]): HTMLElement | null {
+  for (const selector of selectors) {
+    const candidates = Array.from(document.querySelectorAll(selector));
+
+    for (const candidate of candidates) {
+      if (!(candidate instanceof HTMLElement)) {
+        continue;
+      }
+
+      const rect = getVisibleRect(candidate);
+      if (!rect) {
+        continue;
+      }
+
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 function findDeepSeekShareButton(): Element | null {
@@ -195,23 +245,126 @@ function findDeepSeekShareButton(): Element | null {
   return bestCandidate;
 }
 
+function findDoubaoAnchor(): HTMLElement | null {
+  const primaryAnchor = findVisibleElementBySelectors([
+    'button[data-testid="thread_share_btn_right_side"]',
+    '[data-testid="chat_header_download_client"]',
+    'button[data-testid="create_conversation_button"]',
+  ]);
+
+  if (primaryAnchor) {
+    return primaryAnchor;
+  }
+
+  const headerCandidates = Array.from(document.querySelectorAll('[data-container-name="main"] > div > div'));
+  let bestHeader: HTMLElement | null = null;
+  let bestScore = -Infinity;
+
+  for (const candidate of headerCandidates) {
+    if (!(candidate instanceof HTMLElement)) {
+      continue;
+    }
+
+    const rect = getVisibleRect(candidate);
+    if (!rect) {
+      continue;
+    }
+    if (rect.top < 0 || rect.top > 180) {
+      continue;
+    }
+    if (rect.height < 40 || rect.width < window.innerWidth * 0.5) {
+      continue;
+    }
+
+    const containsChatInput = candidate.querySelector('[data-testid="chat_input"]') !== null;
+    if (containsChatInput) {
+      continue;
+    }
+
+    const score = rect.width - rect.top;
+    if (score > bestScore) {
+      bestScore = score;
+      bestHeader = candidate;
+    }
+  }
+
+  return bestHeader;
+}
+
+function resetDeepSeekButtonPosition(chatdownRoot: HTMLElement) {
+  chatdownRoot.style.position = '';
+  chatdownRoot.style.top = '';
+  chatdownRoot.style.right = '';
+  chatdownRoot.style.transform = '';
+  chatdownRoot.style.zIndex = '';
+}
+
+function ensureDeepSeekActionsWrapper(chatdownRoot: HTMLElement, shareButton: HTMLElement): HTMLElement | null {
+  const currentParent = shareButton.parentElement;
+  if (!(currentParent instanceof HTMLElement)) {
+    return null;
+  }
+
+  let wrapper: HTMLElement | null = currentParent.id === DEEPSEEK_ACTIONS_WRAPPER_ID
+    ? currentParent
+    : document.getElementById(DEEPSEEK_ACTIONS_WRAPPER_ID) as HTMLElement | null;
+
+  if (!wrapper) {
+    wrapper = document.createElement('div');
+    wrapper.id = DEEPSEEK_ACTIONS_WRAPPER_ID;
+    currentParent.insertBefore(wrapper, shareButton);
+  } else if (wrapper !== currentParent && wrapper.parentElement !== currentParent) {
+    currentParent.insertBefore(wrapper, shareButton);
+  }
+
+  if (!wrapper.contains(chatdownRoot)) {
+    wrapper.appendChild(chatdownRoot);
+  }
+
+  if (!wrapper.contains(shareButton)) {
+    wrapper.appendChild(shareButton);
+  }
+
+  return wrapper;
+}
+
+function applyDeepSeekButtonSpacing(chatdownRoot: HTMLElement, shareButton: HTMLElement) {
+  resetDeepSeekButtonPosition(chatdownRoot);
+  chatdownRoot.style.marginLeft = '0';
+  chatdownRoot.style.marginRight = '0';
+  shareButton.style.marginLeft = '0';
+}
+
 function alignDeepSeekButtonToShare() {
   const chatdownRoot = document.getElementById(BUTTON_ROOT_ID);
   const shareButton = findDeepSeekShareButton();
 
-  if (!chatdownRoot || !shareButton?.parentElement) {
+  if (!(chatdownRoot instanceof HTMLElement) || !(shareButton instanceof HTMLElement) || !shareButton.parentElement) {
     return;
   }
 
-  const expectedParent = shareButton.parentElement;
-  const isAlreadyBeforeShare =
-    chatdownRoot.parentElement === expectedParent &&
-    chatdownRoot.nextElementSibling === shareButton;
-
-  if (!isAlreadyBeforeShare) {
-    expectedParent.insertBefore(chatdownRoot, shareButton);
-    console.log('[Chatdown] Re-aligned DeepSeek button next to share');
+  const wrapper = ensureDeepSeekActionsWrapper(chatdownRoot, shareButton);
+  if (!wrapper) {
+    return;
   }
+
+  if (wrapper.parentElement?.lastElementChild !== wrapper) {
+    wrapper.parentElement?.appendChild(wrapper);
+  }
+
+  applyDeepSeekButtonSpacing(chatdownRoot, shareButton);
+}
+
+function scheduleDeepSeekAlignment() {
+  if (detectPlatform() !== 'deepseek' || deepSeekAlignScheduled) {
+    return;
+  }
+
+  deepSeekAlignScheduled = true;
+  window.requestAnimationFrame(() => {
+    deepSeekAlignScheduled = false;
+    alignDeepSeekButtonToShare();
+  });
 }
 
 function init() {
@@ -231,6 +384,7 @@ function init() {
 
   let targetElement: Element | null = null;
   let deepSeekShareButton: Element | null = null;
+  let doubaoAnchor: HTMLElement | null = null;
 
   if (platform === 'deepseek') {
     deepSeekShareButton = findDeepSeekShareButton();
@@ -246,6 +400,22 @@ function init() {
     } else {
       deepSeekAnchorRetries = 0;
       console.warn('[Chatdown] DeepSeek share button not found after retries, using fallback container');
+    }
+  } else if (platform === 'doubao') {
+    doubaoAnchor = findDoubaoAnchor();
+    if (doubaoAnchor) {
+      doubaoAnchorRetries = 0;
+      targetElement = doubaoAnchor;
+      console.log('[Chatdown] Found Doubao anchor');
+    } else if (doubaoAnchorRetries < MAX_DOUBAO_ANCHOR_RETRIES) {
+      doubaoAnchorRetries += 1;
+      console.log('[Chatdown] Doubao anchor not ready, retrying...');
+      setTimeout(init, 300);
+      return;
+    } else {
+      doubaoAnchorRetries = 0;
+      targetElement = document.body;
+      console.warn('[Chatdown] Doubao anchor not found after retries, using floating fallback');
     }
   }
 
@@ -269,10 +439,10 @@ function init() {
 
   const container = document.createElement('div');
   container.id = BUTTON_ROOT_ID;
-  container.style.cssText = 'display: inline-block;';
-
-  if (platform === 'deepseek' && !deepSeekShareButton) {
-    container.style.marginLeft = 'auto';
+  if (platform === 'doubao' && targetElement === document.body) {
+    configureFloatingButtonContainer(container);
+  } else {
+    configureButtonContainer(container, platform);
   }
 
   if (platform === 'chatgpt') {
@@ -300,6 +470,16 @@ function init() {
         targetElement.appendChild(container);
       }
     }
+  } else if (platform === 'doubao') {
+    if (
+      targetElement instanceof HTMLElement
+      && targetElement.matches('button[data-testid="thread_share_btn_right_side"], [data-testid="chat_header_download_client"], button[data-testid="create_conversation_button"]')
+      && targetElement.parentElement
+    ) {
+      targetElement.parentElement.insertBefore(container, targetElement);
+    } else {
+      targetElement.appendChild(container);
+    }
   } else {
     targetElement.appendChild(container);
   }
@@ -309,6 +489,11 @@ function init() {
       <App />
     </I18nProvider>
   );
+
+  if (platform === 'deepseek') {
+    scheduleDeepSeekAlignment();
+  }
+
   console.log('[Chatdown] Button rendered successfully');
 }
 
@@ -329,20 +514,12 @@ const observer = new MutationObserver(() => {
     return;
   }
 
-  if (detectPlatform() === 'deepseek') {
-    if (deepSeekAlignScheduled) {
-      return;
-    }
-
-    deepSeekAlignScheduled = true;
-    window.requestAnimationFrame(() => {
-      deepSeekAlignScheduled = false;
-      alignDeepSeekButtonToShare();
-    });
-  }
+  scheduleDeepSeekAlignment();
 });
 
 observer.observe(document.body, {
   childList: true,
   subtree: true,
 });
+
+window.addEventListener('resize', scheduleDeepSeekAlignment);

@@ -2,30 +2,40 @@
   "manifest_version": 3,
   "default_locale": "en",
   "name": "__MSG_extName__",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "__MSG_extDescription__",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
     "https://gemini.google.com/*",
     "https://chat.deepseek.com/*",
+    "https://www.doubao.com/*",
+    "https://doubao.com/*",
     "https://api.notion.com/*"
   ],
   "background": {
     "service_worker": "src/background/index.ts",
     "type": "module"
   },
-  "content_scripts": [{
-    "matches": [
-      "https://chat.openai.com/*",
-      "https://chatgpt.com/*",
-      "https://gemini.google.com/*",
-      "https://chat.deepseek.com/*"
-    ],
-    "js": ["src/content/index.tsx"],
-    "run_at": "document_idle"
-  }],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://chat.deepseek.com/*",
+        "https://www.doubao.com/*",
+        "https://doubao.com/*"
+      ],
+      "js": [
+        "src/content/index.tsx"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_popup": "src/popup/index.html",
     "default_title": "__MSG_actionTitle__"

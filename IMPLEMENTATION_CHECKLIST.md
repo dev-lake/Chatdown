@@ -34,6 +34,7 @@
 - [x] src/content/parsers/chatgpt.ts - ChatGPT parser
 - [x] src/content/parsers/gemini.ts - Google Gemini parser
 - [x] src/content/parsers/deepseek.ts - DeepSeek parser
+- [x] src/content/parsers/doubao.ts - Doubao parser
 
 ## ✅ Popup
 - [x] src/popup/index.tsx - Popup entry point
@@ -84,11 +85,12 @@ npm run build
 - [ ] ChatGPT (chat.openai.com)
 - [ ] Google Gemini (gemini.google.com)
 - [ ] DeepSeek (chat.deepseek.com)
+- [ ] Doubao (www.doubao.com)
 
 ## Features Implemented
 
 ### Core Functionality
-- ✅ DOM parsing for ChatGPT, Gemini, DeepSeek
+- ✅ DOM parsing for ChatGPT, Gemini, DeepSeek, Doubao
 - ✅ LLM API integration (OpenAI-compatible)
 - ✅ Article generation with custom prompt
 - ✅ Preview modal with tabs (Preview/Markdown)
