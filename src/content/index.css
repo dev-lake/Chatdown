@@ -468,6 +468,10 @@
   background: rgba(255, 255, 255, 0.85);
 }
 
+#chatdown-overlay-root .chatdown-window__scroll--ai-edit {
+  padding-bottom: 8rem;
+}
+
 #chatdown-overlay-root .chatdown-empty-state {
   display: flex;
   height: 100%;
@@ -796,6 +800,189 @@
   justify-content: flex-end;
 }
 
+#chatdown-overlay-root .chatdown-ai-edit-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+  padding: 0.78rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-floating {
+  position: absolute;
+  z-index: 5;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  max-height: min(44%, 300px);
+  overflow-y: auto;
+  pointer-events: auto;
+  padding-top: 0.45rem;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0), rgba(15, 23, 42, 0.1));
+  border-radius: 12px;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-floating .chatdown-ai-edit-panel {
+  position: relative;
+  margin-bottom: 0;
+  border-color: rgba(15, 23, 42, 0.24);
+  background: #ffffff;
+  box-shadow:
+    0 22px 58px rgba(15, 23, 42, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.9) inset;
+  backdrop-filter: blur(18px);
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-floating .chatdown-ai-edit-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 8px 8px 0 0;
+  background: linear-gradient(90deg, #0f172a, #0284c7);
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-panel--compact {
+  padding: 0.62rem 0.68rem;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-panel--compact .chatdown-primary-button,
+#chatdown-overlay-root .chatdown-ai-edit-panel--compact .chatdown-secondary-button {
+  min-height: 2rem;
+  padding: 0.42rem 0.68rem;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-compact-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-compact-row strong {
+  flex: 0 0 auto;
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-panel__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-panel__header strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-panel__header span,
+#chatdown-overlay-root .chatdown-ai-edit-panel__message {
+  margin: 0;
+  color: #475569;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-actions,
+#chatdown-overlay-root .chatdown-ai-edit-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-actions {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-custom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: flex-start;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-custom textarea {
+  width: 100%;
+  min-height: 3.1rem;
+  resize: vertical;
+  padding: 0.62rem 0.72rem;
+  border: 1px solid rgba(71, 85, 105, 0.34);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f172a;
+  font: inherit;
+  line-height: 1.5;
+  outline: none;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-custom textarea:focus {
+  border-color: rgba(14, 165, 233, 0.55);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-panel__error {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(248, 113, 113, 0.34);
+  border-radius: 8px;
+  background: rgba(254, 242, 242, 0.9);
+  color: #991b1b;
+  line-height: 1.5;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-preview {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-preview section {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid rgba(71, 85, 105, 0.22);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-preview h3 {
+  margin: 0 0 0.55rem;
+  color: #0f172a;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-preview .chatdown-prose {
+  font-size: 0.9rem;
+}
+
+#chatdown-overlay-root .chatdown-ai-edit-preview__empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 620px) {
+  #chatdown-overlay-root .chatdown-ai-edit-custom,
+  #chatdown-overlay-root .chatdown-ai-edit-preview {
+    grid-template-columns: 1fr;
+  }
+
+  #chatdown-overlay-root .chatdown-ai-edit-compact-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 #chatdown-overlay-root .chatdown-window__resize-edge {
   position: absolute;
   z-index: 3;
@@ -889,6 +1076,10 @@
 #chatdown-overlay-root .chatdown-editor {
   min-height: 100%;
   outline: none;
+}
+
+#chatdown-overlay-root .chatdown-window__scroll--readonly .chatdown-editor {
+  caret-color: transparent;
 }
 
 #chatdown-overlay-root .chatdown-editor p.is-editor-empty:first-child::before {

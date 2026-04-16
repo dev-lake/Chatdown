@@ -1,4 +1,4 @@
-import type { ApiConfig, ConversationRound, Locale, Message } from '../types';
+import type { ApiConfig, ConversationRound, Locale, LocalEditOperation, Message } from '../types';
 import type { TranslateFn } from '../i18n/core';
 
 const ARTICLE_SYSTEM_PROMPT = `You are a technical writer.
@@ -24,6 +24,17 @@ Rules:
 - Do not mention "user" or "assistant" unless necessary for clarity.
 - Preserve the order of rounds exactly.
 - Write each summary in the same language as the original conversation round.`;
+
+const LOCAL_EDIT_SYSTEM_PROMPT = `You are an expert Markdown editor.
+Rewrite only the selected article fragment according to the requested operation.
+
+Rules:
+- Return only the replacement Markdown fragment.
+- Do not explain the change.
+- Do not wrap the answer in markdown fences.
+- Do not include unchanged article content outside the selected fragment.
+- Preserve the article language, tone, terminology, and Markdown style unless the user instruction says otherwise.
+- Use the original conversation only as factual context. Do not invent unsupported facts.`;
 
 const SIMPLIFIED_ONLY_CHARS = '这来时说会后发开关对们国种点样于为从还过边让经实';
 const TRADITIONAL_ONLY_CHARS = '這來時說會後發開關對們國種點樣於為從還過邊讓經實';
@@ -137,6 +148,23 @@ function getLocaleLabel(locale: Locale): string {
   }
 }
 
+function getLocalEditOperationInstruction(operation: LocalEditOperation): string {
+  switch (operation) {
+    case 'expand':
+      return 'Expand the selected fragment with useful detail, examples, or explanation while staying factual.';
+    case 'polish':
+      return 'Polish the selected fragment for clarity, flow, and readability without changing the meaning.';
+    case 'shorten':
+      return 'Shorten the selected fragment while preserving the core information.';
+    case 'custom':
+      return 'Follow the user instruction exactly.';
+    case 'delete':
+      return 'Delete the selected fragment.';
+    default:
+      return 'Improve the selected fragment.';
+  }
+}
+
 function buildArticleUserPrompt(messages: Message[], targetLocale: Locale): string {
   return `Target output language: ${getLocaleLabel(targetLocale)}.
 Use exactly this language and script for the entire article.
@@ -144,6 +172,51 @@ Do not default to English unless the target output language is English.
 
 Conversation:
 ${formatConversation(messages)}`;
+}
+
+function buildLocalEditUserPrompt(
+  articleMarkdown: string,
+  selectedMarkdown: string,
+  selectedText: string,
+  operation: LocalEditOperation,
+  instruction: string,
+  messages: Message[],
+  targetLocale: Locale
+): string {
+  const defaultInstruction = getLocalEditOperationInstruction(operation);
+  const userInstruction = instruction.trim() || defaultInstruction;
+  const conversationContext = messages.length > 0
+    ? formatConversation(messages)
+    : 'No original conversation context is available.';
+
+  return `Target output language: ${getLocaleLabel(targetLocale)}.
+Use exactly this language and script unless the selected fragment already uses another language.
+
+Operation: ${operation}
+Default operation instruction: ${defaultInstruction}
+User instruction: ${userInstruction}
+
+Full current article:
+<article>
+${articleMarkdown}
+</article>
+
+Selected Markdown fragment to replace:
+<selected_markdown>
+${selectedMarkdown}
+</selected_markdown>
+
+Selected plain text fallback:
+<selected_text>
+${selectedText}
+</selected_text>
+
+Original conversation context:
+<conversation>
+${conversationContext}
+</conversation>
+
+Return only the replacement Markdown fragment.`;
 }
 
 function buildSummaryUserPrompt(
@@ -195,6 +268,13 @@ function getLanguageMismatchIndexes(
 
     return detectedLocale === expectedLocale ? [] : [index];
   });
+}
+
+function stripOuterMarkdownFence(value: string): string {
+  const trimmed = value.trim();
+  const fenceMatch = trimmed.match(/^```(?:markdown|md)\s*\n([\s\S]*?)\n```$/i);
+
+  return fenceMatch?.[1]?.trim() ?? trimmed;
 }
 
 function buildSummaryRetryUserPrompt(
@@ -482,6 +562,41 @@ export async function generateArticle(
   }
 
   return fullContent;
+}
+
+export async function rewriteArticleSelection(
+  articleMarkdown: string,
+  selectedMarkdown: string,
+  selectedText: string,
+  operation: LocalEditOperation,
+  instruction: string,
+  messages: Message[],
+  config: ApiConfig,
+  t: TranslateFn
+): Promise<string> {
+  try {
+    const targetLocale = messages.length > 0
+      ? getDominantLocale(messages)
+      : detectTextLocale(articleMarkdown) ?? 'en';
+    const prompt = buildLocalEditUserPrompt(
+      articleMarkdown,
+      selectedMarkdown,
+      selectedText,
+      operation,
+      instruction,
+      messages,
+      targetLocale
+    );
+    const replacement = await requestTextCompletion(LOCAL_EDIT_SYSTEM_PROMPT, prompt, config);
+
+    if (!replacement.trim()) {
+      throw new Error('MODEL_RETURNED_EMPTY');
+    }
+
+    return stripOuterMarkdownFence(replacement);
+  } catch (error) {
+    throw new Error(toLocalizedErrorMessage(error, t));
+  }
 }
 
 export async function testConnection(config: ApiConfig): Promise<boolean> {

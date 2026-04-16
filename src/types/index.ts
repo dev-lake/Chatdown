@@ -8,6 +8,7 @@ export type LocalePreference = 'auto' | Locale;
 
 export type WorkflowPhase = 'idle' | 'summarizing_rounds' | 'selecting_rounds' | 'generating' | 'ready' | 'error';
 export type GenerationMode = 'full' | 'partial';
+export type LocalEditOperation = 'expand' | 'polish' | 'shorten' | 'custom' | 'delete';
 
 export interface ConversationRound {
   id: string;
@@ -68,7 +69,8 @@ export interface ChromeMessage {
     | 'exportToNotion'
     | 'exportToObsidian'
     | 'testNotionConnection'
-    | 'saveArticleContent';
+    | 'saveArticleContent'
+    | 'modifyArticleSelection';
   messages?: Message[];
   config?: ApiConfig;
   article?: string;
@@ -80,12 +82,17 @@ export interface ChromeMessage {
   articleContent?: string;
   useClipboard?: boolean;
   mode?: GenerationMode;
+  operation?: LocalEditOperation;
+  instruction?: string;
+  selectedText?: string;
+  selectedMarkdown?: string;
   selectedRoundIds?: string[];
   state?: ArticleState;
 }
 
 export interface ChromeResponse {
   article?: string;
+  replacement?: string;
   error?: string;
   success?: boolean;
   missingProperties?: string[];

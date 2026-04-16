@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
+import { Markdown } from 'tiptap-markdown';
 import { marked } from 'marked';
-import type { ArticleState, ChromeMessage, GenerationMode } from '../types';
+import type { ArticleState, ChromeMessage, GenerationMode, LocalEditOperation } from '../types';
 import type { TranslateFn } from '../i18n/core';
 import { useI18n } from '../i18n/react';
 import {
@@ -40,12 +42,43 @@ interface WindowRect {
 
 type ResizeDirection = 'top' | 'right' | 'bottom' | 'left';
 type ExportTarget = 'notion' | 'obsidian' | null;
+type LocalEditStatus = 'loading' | 'preview' | 'error';
+
+const LOCAL_EDIT_PRESET_OPERATIONS: LocalEditOperation[] = ['expand', 'polish', 'shorten', 'delete'];
 
 interface ResizeState {
   direction: ResizeDirection;
   startX: number;
   startY: number;
   origin: WindowRect;
+}
+
+interface LocalEditRange {
+  from: number;
+  to: number;
+}
+
+interface LocalEditSelection {
+  range: LocalEditRange;
+  selectedMarkdown: string;
+  selectedText: string;
+}
+
+interface LocalEditDraft extends LocalEditSelection {
+  operation: LocalEditOperation;
+  instruction: string;
+  replacement: string;
+  status: LocalEditStatus;
+  error: string;
+}
+
+interface MarkdownEditorStorage {
+  markdown?: {
+    getMarkdown?: () => string;
+    serializer?: {
+      serialize: (content: unknown) => string;
+    };
+  };
 }
 
 function buildErrorArticle(errorTitle: string, message: string): string {
@@ -210,6 +243,79 @@ function buildMarkdownFilename(content: string, locale: string, t: TranslateFn):
   return `${sanitizeFilenameBase(filenameBase)}.md`;
 }
 
+function getMarkdownStorage(editor: Editor): MarkdownEditorStorage['markdown'] {
+  return (editor.storage as MarkdownEditorStorage).markdown;
+}
+
+function getEditorMarkdown(editor: Editor): string {
+  const markdown = getMarkdownStorage(editor)?.getMarkdown?.();
+
+  return typeof markdown === 'string' ? markdown : editor.getText();
+}
+
+function getSelectedMarkdown(editor: Editor, range: LocalEditRange): string {
+  const slice = editor.state.doc.slice(range.from, range.to);
+  const markdown = getMarkdownStorage(editor)?.serializer?.serialize(slice.content);
+
+  if (typeof markdown === 'string' && markdown.trim()) {
+    return markdown.trim();
+  }
+
+  return editor.state.doc.textBetween(range.from, range.to, '\n\n').trim();
+}
+
+function getLocalEditSelection(editor: Editor): LocalEditSelection | null {
+  const { from, to, empty } = editor.state.selection;
+
+  if (empty || from === to) {
+    return null;
+  }
+
+  const range = { from, to };
+  const selectedMarkdown = getSelectedMarkdown(editor, range);
+  const selectedText = editor.state.doc.textBetween(from, to, '\n\n').trim();
+
+  if (!selectedMarkdown && !selectedText) {
+    return null;
+  }
+
+  return {
+    range,
+    selectedMarkdown: selectedMarkdown || selectedText,
+    selectedText,
+  };
+}
+
+function replaceRangeWithMarkdown(
+  editor: Editor,
+  range: LocalEditRange,
+  replacement: string
+): void {
+  if (!replacement.trim()) {
+    editor.chain().focus().deleteRange(range).run();
+    return;
+  }
+
+  editor.chain().focus().insertContentAt(range, replacement).run();
+}
+
+function getLocalEditOperationLabel(operation: LocalEditOperation, t: TranslateFn): string {
+  switch (operation) {
+    case 'expand':
+      return t('overlayAiEditExpand');
+    case 'polish':
+      return t('overlayAiEditPolish');
+    case 'shorten':
+      return t('overlayAiEditShorten');
+    case 'custom':
+      return t('overlayAiEditCustom');
+    case 'delete':
+      return t('overlayAiEditDelete');
+    default:
+      return t('commonAiEdit');
+  }
+}
+
 function getRegenerationContext(articleState: ArticleState | null): Pick<ChromeMessage, 'messages' | 'sourceUrl' | 'platform'> {
   const detectedPlatform = detectPlatform();
   const parser = getParser(detectedPlatform);
@@ -318,10 +424,16 @@ export default function OverlayApp() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showRegenerateMenu, setShowRegenerateMenu] = useState(false);
   const [selectedRoundIds, setSelectedRoundIds] = useState<string[]>([]);
+  const [localEditSelection, setLocalEditSelection] = useState<LocalEditSelection | null>(null);
+  const [localEditDraft, setLocalEditDraft] = useState<LocalEditDraft | null>(null);
+  const [localEditInstruction, setLocalEditInstruction] = useState('');
+  const [showLocalEditCustomInput, setShowLocalEditCustomInput] = useState(false);
+  const [localEditError, setLocalEditError] = useState('');
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const regenerateMenuRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{ startX: number; startY: number; origin: WindowRect } | null>(null);
   const resizeStateRef = useRef<ResizeState | null>(null);
+  const lastSyncedMarkdownRef = useRef('');
 
   const editor = useEditor({
     extensions: [
@@ -340,15 +452,24 @@ export default function OverlayApp() {
       TaskItem.configure({
         nested: true,
       }),
+      Markdown.configure({
+        html: true,
+        breaks: true,
+        transformCopiedText: true,
+        transformPastedText: true,
+      }),
     ],
     content: '',
-    editable: true,
+    editable: false,
     editorProps: {
       attributes: {
         class: 'chatdown-editor',
       },
     },
   }, [locale]);
+
+  const localEditLocksEditor = Boolean(localEditDraft);
+  const localEditBusy = localEditDraft?.status === 'loading';
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
     if (dragStateRef.current) {
@@ -385,6 +506,57 @@ export default function OverlayApp() {
   }, [handlePointerMove]);
 
   useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
+    editor.setEditable(isEditing && !localEditLocksEditor);
+  }, [editor, isEditing, localEditLocksEditor]);
+
+  useEffect(() => {
+    if (!editor || isEditing) {
+      return;
+    }
+
+    if (markdownContent === lastSyncedMarkdownRef.current) {
+      return;
+    }
+
+    editor.commands.setContent(markdownContent, false);
+    lastSyncedMarkdownRef.current = markdownContent;
+  }, [editor, isEditing, markdownContent]);
+
+  useEffect(() => {
+    if (!editor || !isEditing) {
+      setLocalEditSelection(null);
+      return;
+    }
+
+    if (localEditLocksEditor) {
+      return;
+    }
+
+    const updateLocalSelection = () => {
+      const nextSelection = getLocalEditSelection(editor);
+      setLocalEditSelection(nextSelection);
+
+      if (nextSelection) {
+        setLocalEditError('');
+      } else {
+        setLocalEditInstruction('');
+        setShowLocalEditCustomInput(false);
+      }
+    };
+
+    updateLocalSelection();
+    editor.on('selectionUpdate', updateLocalSelection);
+
+    return () => {
+      editor.off('selectionUpdate', updateLocalSelection);
+    };
+  }, [editor, isEditing, localEditLocksEditor]);
+
+  useEffect(() => {
     const loadArticleState = async () => {
       try {
         const response = await chrome.runtime.sendMessage({ action: 'getArticleState' });
@@ -412,10 +584,18 @@ export default function OverlayApp() {
       }
 
       if (message.action === 'displayArticle') {
+        setLocalEditDraft(null);
+        setLocalEditInstruction('');
+        setShowLocalEditCustomInput(false);
+        setLocalEditError('');
         setMarkdownContent(message.article || message.state?.article || '');
         setStreamingContent('');
         setIsEditing(false);
       } else if (message.action === 'generatingArticle') {
+        setLocalEditDraft(null);
+        setLocalEditInstruction('');
+        setShowLocalEditCustomInput(false);
+        setLocalEditError('');
         setMarkdownContent('');
         setStreamingContent(message.state?.partialArticle || '');
         setIsEditing(false);
@@ -448,6 +628,10 @@ export default function OverlayApp() {
       setMarkdownContent(buildErrorArticle(t('commonErrorTitle'), errorMessage));
       setStreamingContent('');
       setIsEditing(false);
+      setLocalEditDraft(null);
+      setLocalEditInstruction('');
+      setShowLocalEditCustomInput(false);
+      setLocalEditError('');
     };
 
     const handleViewportResize = () => {
@@ -577,11 +761,13 @@ export default function OverlayApp() {
       return;
     }
 
+    setLocalEditDraft(null);
+    setLocalEditInstruction('');
+    setShowLocalEditCustomInput(false);
+    setLocalEditError('');
     setIsEditing(true);
-    const html = isHtmlContent(markdownContent)
-      ? markdownContent
-      : await marked.parse(markdownContent);
-    editor.commands.setContent(html);
+    editor.commands.setContent(markdownContent);
+    lastSyncedMarkdownRef.current = markdownContent;
     editor.commands.focus();
   };
 
@@ -590,14 +776,20 @@ export default function OverlayApp() {
       return;
     }
 
-    const html = editor.getHTML();
-    setMarkdownContent(html);
+    const updatedMarkdown = getEditorMarkdown(editor);
+    setMarkdownContent(updatedMarkdown);
+    lastSyncedMarkdownRef.current = updatedMarkdown;
     setIsEditing(false);
+    setLocalEditSelection(null);
+    setLocalEditDraft(null);
+    setLocalEditInstruction('');
+    setShowLocalEditCustomInput(false);
+    setLocalEditError('');
 
     try {
       const response = await chrome.runtime.sendMessage({
         action: 'saveArticleContent',
-        articleContent: html,
+        articleContent: updatedMarkdown,
       });
 
       if (response?.state) {
@@ -613,12 +805,144 @@ export default function OverlayApp() {
   };
 
   const handleCancel = () => {
+    if (editor) {
+      editor.commands.setContent(markdownContent, false);
+      lastSyncedMarkdownRef.current = markdownContent;
+    }
+
     setIsEditing(false);
+    setLocalEditSelection(null);
+    setLocalEditDraft(null);
+    setLocalEditInstruction('');
+    setShowLocalEditCustomInput(false);
+    setLocalEditError('');
+  };
+
+  const submitLocalEdit = async (
+    operation: LocalEditOperation,
+    instruction: string,
+    selection: LocalEditSelection
+  ) => {
+    if (!editor) {
+      return;
+    }
+
+    const normalizedInstruction = instruction.trim();
+
+    if (operation === 'custom' && !normalizedInstruction) {
+      setLocalEditError(t('overlayAiEditInstructionRequired'));
+      return;
+    }
+
+    const nextDraft: LocalEditDraft = {
+      ...selection,
+      operation,
+      instruction: normalizedInstruction,
+      replacement: '',
+      status: 'loading',
+      error: '',
+    };
+
+    setLocalEditDraft(nextDraft);
+    setLocalEditError('');
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'modifyArticleSelection',
+        operation,
+        instruction: normalizedInstruction,
+        selectedText: selection.selectedText,
+        selectedMarkdown: selection.selectedMarkdown,
+        articleContent: getEditorMarkdown(editor),
+      });
+
+      if (typeof response?.replacement === 'string') {
+        setLocalEditDraft({
+          ...nextDraft,
+          replacement: response.replacement,
+          status: 'preview',
+          error: '',
+        });
+        return;
+      }
+
+      setLocalEditDraft({
+        ...nextDraft,
+        status: 'error',
+        error: response?.error || t('overlayAiEditFailed'),
+      });
+    } catch {
+      setLocalEditDraft({
+        ...nextDraft,
+        status: 'error',
+        error: t('overlayAiEditFailed'),
+      });
+    }
+  };
+
+  const handleLocalEditOperation = async (
+    operation: LocalEditOperation,
+    instruction = ''
+  ) => {
+    if (!editor || localEditBusy) {
+      return;
+    }
+
+    const selection = getLocalEditSelection(editor) || localEditSelection;
+
+    if (!selection) {
+      setLocalEditError(t('overlayAiEditNoSelection'));
+      return;
+    }
+
+    await submitLocalEdit(operation, instruction, selection);
+  };
+
+  const handleRetryLocalEdit = async () => {
+    if (!localEditDraft || localEditBusy) {
+      return;
+    }
+
+    await submitLocalEdit(
+      localEditDraft.operation,
+      localEditDraft.instruction,
+      {
+        range: localEditDraft.range,
+        selectedMarkdown: localEditDraft.selectedMarkdown,
+        selectedText: localEditDraft.selectedText,
+      }
+    );
+  };
+
+  const handleApplyLocalEdit = async () => {
+    if (!editor || !localEditDraft || localEditDraft.status !== 'preview') {
+      return;
+    }
+
+    editor.setEditable(true);
+    replaceRangeWithMarkdown(editor, localEditDraft.range, localEditDraft.replacement);
+    setLocalEditSelection(null);
+    setLocalEditDraft(null);
+    setLocalEditInstruction('');
+    setShowLocalEditCustomInput(false);
+    setLocalEditError('');
+    editor.commands.focus();
+  };
+
+  const handleDismissLocalEditPreview = () => {
+    setLocalEditDraft(null);
+    setShowLocalEditCustomInput(false);
+    setLocalEditError('');
   };
 
   const handleRegenerate = async (mode: GenerationMode) => {
     try {
       setShowRegenerateMenu(false);
+      setLocalEditSelection(null);
+      setLocalEditDraft(null);
+      setLocalEditInstruction('');
+      setShowLocalEditCustomInput(false);
+      setLocalEditError('');
       const regenerationContext = getRegenerationContext(articleState);
       const response = await chrome.runtime.sendMessage({
         action: 'regenerateArticle',
@@ -782,6 +1106,11 @@ export default function OverlayApp() {
     setShowExportMenu(false);
     setShowRegenerateMenu(false);
     setIsEditing(false);
+    setLocalEditSelection(null);
+    setLocalEditDraft(null);
+    setLocalEditInstruction('');
+    setShowLocalEditCustomInput(false);
+    setLocalEditError('');
     setExporting(false);
     setExportTarget(null);
   };
@@ -850,6 +1179,142 @@ export default function OverlayApp() {
     );
   };
 
+  const renderLocalEditPanel = () => {
+    if (localEditDraft) {
+      return (
+        <div className={`chatdown-ai-edit-panel is-${localEditDraft.status}`}>
+          <div className="chatdown-ai-edit-panel__header">
+            <strong>{t('overlayAiEditPreviewTitle')}</strong>
+            <span>{getLocalEditOperationLabel(localEditDraft.operation, t)}</span>
+          </div>
+
+          {localEditDraft.status === 'loading' ? (
+            <p className="chatdown-ai-edit-panel__message">{t('overlayStatusAiEditing')}</p>
+          ) : localEditDraft.status === 'error' ? (
+            <>
+              <p className="chatdown-ai-edit-panel__error">
+                {localEditDraft.error || t('overlayAiEditFailed')}
+              </p>
+              <div className="chatdown-ai-edit-panel__actions">
+                <button
+                  type="button"
+                  className="chatdown-secondary-button"
+                  onClick={() => void handleRetryLocalEdit()}
+                >
+                  {t('overlayAiEditRetry')}
+                </button>
+                <button
+                  type="button"
+                  className="chatdown-secondary-button"
+                  onClick={handleDismissLocalEditPreview}
+                >
+                  {t('overlayAiEditCancel')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="chatdown-ai-edit-preview">
+                <section>
+                  <h3>{t('overlayAiEditOriginal')}</h3>
+                  {renderMarkdown(localEditDraft.selectedMarkdown)}
+                </section>
+                <section>
+                  <h3>{t('overlayAiEditReplacement')}</h3>
+                  {localEditDraft.replacement.trim()
+                    ? renderMarkdown(localEditDraft.replacement)
+                    : <p className="chatdown-ai-edit-preview__empty">{t('overlayAiEditReplacementEmpty')}</p>}
+                </section>
+              </div>
+              <div className="chatdown-ai-edit-panel__actions">
+                <button
+                  type="button"
+                  className="chatdown-secondary-button"
+                  onClick={() => void handleRetryLocalEdit()}
+                >
+                  {t('overlayAiEditRetry')}
+                </button>
+                <button
+                  type="button"
+                  className="chatdown-secondary-button"
+                  onClick={handleDismissLocalEditPreview}
+                >
+                  {t('overlayAiEditCancel')}
+                </button>
+                <button
+                  type="button"
+                  className="chatdown-primary-button"
+                  onClick={() => void handleApplyLocalEdit()}
+                >
+                  {t('overlayAiEditApply')}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    const hasSelection = Boolean(localEditSelection);
+
+    if (!hasSelection && !localEditError) {
+      return null;
+    }
+
+    return (
+      <div className="chatdown-ai-edit-panel chatdown-ai-edit-panel--compact">
+        <div className="chatdown-ai-edit-compact-row">
+          <strong>{t('commonAiEdit')}</strong>
+
+          <div className="chatdown-ai-edit-actions">
+            {LOCAL_EDIT_PRESET_OPERATIONS.map((operation) => (
+              <button
+                key={operation}
+                type="button"
+                className="chatdown-secondary-button"
+                disabled={!hasSelection || localEditBusy}
+                onClick={() => void handleLocalEditOperation(operation)}
+              >
+                {getLocalEditOperationLabel(operation, t)}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="chatdown-secondary-button"
+              disabled={!hasSelection || localEditBusy}
+              onClick={() => setShowLocalEditCustomInput((current) => !current)}
+            >
+              {t('overlayAiEditCustom')}
+            </button>
+          </div>
+        </div>
+
+        {localEditError ? (
+          <p className="chatdown-ai-edit-panel__error">{localEditError}</p>
+        ) : null}
+
+        {showLocalEditCustomInput ? (
+          <div className="chatdown-ai-edit-custom">
+            <textarea
+              value={localEditInstruction}
+              onChange={(event) => setLocalEditInstruction(event.target.value)}
+              placeholder={t('overlayAiEditInstructionPlaceholder')}
+              disabled={!hasSelection || localEditBusy}
+            />
+            <button
+              type="button"
+              className="chatdown-primary-button"
+              disabled={!hasSelection || localEditBusy || !localEditInstruction.trim()}
+              onClick={() => void handleLocalEditOperation('custom', localEditInstruction)}
+            >
+              {t('overlayAiEditCustom')}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   const renderBody = () => {
     if (articleState?.phase === 'summarizing_rounds') {
       return (
@@ -893,16 +1358,18 @@ export default function OverlayApp() {
     }
 
     if (isEditing) {
+      const hasLocalEditPanel = Boolean(localEditSelection || localEditDraft || localEditError);
+
       return (
-        <div className="chatdown-window__scroll chatdown-window__scroll--editor">
+        <div className={`chatdown-window__scroll chatdown-window__scroll--editor${hasLocalEditPanel ? ' chatdown-window__scroll--ai-edit' : ''}`}>
           <EditorContent editor={editor} />
         </div>
       );
     }
 
     return (
-      <div className="chatdown-window__scroll">
-        {renderMarkdown(markdownContent)}
+      <div className="chatdown-window__scroll chatdown-window__scroll--editor chatdown-window__scroll--readonly">
+        {editor ? <EditorContent editor={editor} /> : renderMarkdown(markdownContent)}
       </div>
     );
   };
@@ -940,12 +1407,24 @@ export default function OverlayApp() {
           <div className="chatdown-window__toolbar">
             {isEditing ? (
               <>
-                <span className="chatdown-status">{t('overlayStatusEditMode')}</span>
+                <span className="chatdown-status">
+                  {localEditBusy ? t('overlayStatusAiEditing') : t('overlayStatusEditMode')}
+                </span>
                 <div className="chatdown-toolbar__buttons">
-                  <button type="button" className="chatdown-secondary-button" onClick={handleCancel}>
+                  <button
+                    type="button"
+                    className="chatdown-secondary-button"
+                    onClick={handleCancel}
+                    disabled={localEditBusy}
+                  >
                     {t('commonCancel')}
                   </button>
-                  <button type="button" className="chatdown-primary-button" onClick={handleSave}>
+                  <button
+                    type="button"
+                    className="chatdown-primary-button"
+                    onClick={handleSave}
+                    disabled={localEditLocksEditor}
+                  >
                     {t('commonSave')}
                   </button>
                 </div>
@@ -1032,6 +1511,12 @@ export default function OverlayApp() {
         <div className="chatdown-window__body">
           {renderBody()}
         </div>
+
+        {isEditing && (localEditSelection || localEditDraft || localEditError) ? (
+          <div className="chatdown-ai-edit-floating">
+            {renderLocalEditPanel()}
+          </div>
+        ) : null}
 
         <button
           type="button"

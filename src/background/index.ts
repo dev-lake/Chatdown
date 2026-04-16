@@ -5,6 +5,7 @@ import type {
   ChromeResponse,
   ConversationRound,
   GenerationMode,
+  LocalEditOperation,
   Message,
   ObsidianConfig,
   Platform,
@@ -13,6 +14,7 @@ import { getCurrentLocaleContext, type TranslateFn } from '../i18n/core';
 import { getApiConfig, getNotionConfig, getObsidianConfig } from './storage';
 import {
   generateArticle,
+  rewriteArticleSelection,
   summarizeConversationRounds,
   testConnection,
 } from './llm-client';
@@ -22,6 +24,7 @@ const ARTICLE_STATE_KEY_PREFIX = 'articleState:';
 const ARTICLE_CACHE_KEY_PREFIX = 'articleCache:';
 const ROUND_PREVIEW_LENGTH = 180;
 const MAX_OBSIDIAN_FILE_NAME_BASE_LENGTH = 80;
+const LOCAL_EDIT_OPERATIONS: readonly LocalEditOperation[] = ['expand', 'polish', 'shorten', 'custom', 'delete'];
 
 interface ArticleCacheEntry {
   article: string;
@@ -230,6 +233,11 @@ function hashString(content: string): string {
 function hashMessages(messages: Message[]): string {
   const content = messages.map((message) => `${message.role}:${message.content}`).join('|');
   return hashString(content);
+}
+
+function isLocalEditOperation(value: unknown): value is LocalEditOperation {
+  return typeof value === 'string'
+    && LOCAL_EDIT_OPERATIONS.includes(value as LocalEditOperation);
 }
 
 function truncateText(value: string, maxLength: number): string {
@@ -692,6 +700,11 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
+    if (message.action === 'modifyArticleSelection') {
+      void handleModifyArticleSelection(message, sender, sendResponse);
+      return true;
+    }
+
     if (message.action === 'testNotionConnection') {
       void handleTestNotionConnection(message, sendResponse);
       return true;
@@ -971,6 +984,69 @@ async function handleRegenerateArticle(
   } catch (error) {
     sendResponse({
       error: error instanceof Error ? error.message : t('commonUnknownError'),
+      state: await getArticleStateForTab(tabId),
+    });
+  }
+}
+
+async function handleModifyArticleSelection(
+  message: ChromeMessage,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: ChromeResponse) => void
+) {
+  const { t } = await getCurrentLocaleContext();
+  const tabId = getTabIdFromSender(sender, sendResponse, t);
+  if (tabId === null) {
+    return;
+  }
+
+  const selectedMarkdown = message.selectedMarkdown?.trim() ?? '';
+  const selectedText = message.selectedText?.trim() ?? '';
+
+  if (!selectedMarkdown && !selectedText) {
+    sendResponse({ error: t('backgroundNoSelectedText') });
+    return;
+  }
+
+  if (!isLocalEditOperation(message.operation)) {
+    sendResponse({ error: t('backgroundFailedToModifySelection') });
+    return;
+  }
+
+  if (message.operation === 'delete') {
+    sendResponse({ success: true, replacement: '' });
+    return;
+  }
+
+  try {
+    const config = await getApiConfig();
+
+    if (!config) {
+      sendResponse({ error: t('backgroundApiConfigMissing') });
+      return;
+    }
+
+    const currentState = await getArticleStateForTab(tabId);
+    const articleMarkdown = message.articleContent || currentState.article;
+    const replacement = await rewriteArticleSelection(
+      articleMarkdown,
+      selectedMarkdown || selectedText,
+      selectedText,
+      message.operation,
+      message.instruction ?? '',
+      currentState.messages,
+      config,
+      t
+    );
+
+    sendResponse({
+      success: true,
+      replacement,
+      state: currentState,
+    });
+  } catch (error) {
+    sendResponse({
+      error: error instanceof Error ? error.message : t('backgroundFailedToModifySelection'),
       state: await getArticleStateForTab(tabId),
     });
   }
