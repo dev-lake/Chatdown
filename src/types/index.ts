@@ -99,7 +99,7 @@ export interface ChromeResponse {
   state?: ArticleState;
 }
 
-export type Platform = 'chatgpt' | 'gemini' | 'deepseek' | 'doubao' | 'unknown';
+export type Platform = 'chatgpt' | 'gemini' | 'deepseek' | 'doubao' | 'google-ai-mode' | 'unknown';
 
 export interface ChatParser {
   parse(): Message[];

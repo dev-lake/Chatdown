@@ -35,6 +35,10 @@ export default function App() {
           </li>
           <li className="flex items-center gap-2">
             <span className="text-green-600">✓</span>
+            <span>Google Search AI Mode</span>
+          </li>
+          <li className="flex items-center gap-2">
+            <span className="text-green-600">✓</span>
             <span>DeepSeek</span>
           </li>
           <li className="flex items-center gap-2">

@@ -26,19 +26,19 @@ If you keep the current name, the summary below should carry the functional deta
 
 English summary in use:
 
-- Turn ChatGPT, Gemini, DeepSeek, and Doubao conversations into clean Markdown articles with preview, editing, and export.
+- Turn ChatGPT, Gemini, Google Search AI Mode, DeepSeek, and Doubao conversations into clean Markdown articles with preview, editing, and export.
 
 Simplified Chinese summary in use:
 
-- 将 ChatGPT、Gemini、DeepSeek 和豆包对话转换为结构化 Markdown 文章，支持预览、编辑和导出。
+- 将 ChatGPT、Gemini、Google 搜索 AI 模式、DeepSeek 和豆包对话转换为结构化 Markdown 文章，支持预览、编辑和导出。
 
 Traditional Chinese summary in use:
 
-- 將 ChatGPT、Gemini、DeepSeek 和豆包對話轉換為結構化 Markdown 文章，支援預覽、編輯和匯出。
+- 將 ChatGPT、Gemini、Google 搜尋 AI 模式、DeepSeek 和豆包對話轉換為結構化 Markdown 文章，支援預覽、編輯和匯出。
 
 Japanese summary in use:
 
-- ChatGPT、Gemini、DeepSeek、Doubao の会話を構造化された Markdown 記事に変換。プレビュー、編集、エクスポート対応。
+- ChatGPT、Gemini、Google Search AI Mode、DeepSeek、Doubao の会話を構造化された Markdown 記事に変換。プレビュー、編集、エクスポート対応。
 
 ## Detailed Description
 
@@ -46,12 +46,12 @@ Japanese summary in use:
 
 Chatdown turns long AI chat sessions into structured Markdown articles you can keep, edit, and publish.
 
-Open a conversation in ChatGPT, Gemini, DeepSeek, or Doubao, click Chatdown, and the extension extracts the visible conversation and sends it to your own OpenAI-compatible model endpoint. The generated article streams back into the workspace, where you can review the rendered result, switch to raw Markdown, make edits, and export the final version.
+Open a conversation in ChatGPT, Gemini, Google Search AI Mode, DeepSeek, or Doubao, click Chatdown, and the extension extracts the visible conversation and sends it to your own OpenAI-compatible model endpoint. The generated article streams back into the workspace, where you can review the rendered result, switch to raw Markdown, make edits, and export the final version.
 
 Key features:
 
 - Generate articles from the full conversation or from selected conversation rounds
-- Supports ChatGPT, Google Gemini, DeepSeek, and Doubao
+- Supports ChatGPT, Google Gemini, Google Search AI Mode, DeepSeek, and Doubao
 - Stream article generation with live progress
 - Edit the generated content before exporting
 - Copy to clipboard or download as a Markdown file
@@ -68,12 +68,12 @@ Chatdown is built for people who use AI chats as working drafts and want a clean
 
 Chatdown 可以把冗长的 AI 对话整理成结构化 Markdown 文章，方便保存、编辑和发布。
 
-在 ChatGPT、Gemini、DeepSeek 或豆包中打开一个对话后，点击 Chatdown，扩展会提取当前可见对话内容，并发送到你自己配置的兼容 OpenAI 的模型接口。生成结果会实时流式返回到工作区，你可以查看预览、切换原始 Markdown、继续编辑，并导出最终文章。
+在 ChatGPT、Gemini、Google 搜索 AI 模式、DeepSeek 或豆包中打开一个对话后，点击 Chatdown，扩展会提取当前可见对话内容，并发送到你自己配置的兼容 OpenAI 的模型接口。生成结果会实时流式返回到工作区，你可以查看预览、切换原始 Markdown、继续编辑，并导出最终文章。
 
 核心功能：
 
 - 支持基于完整对话生成，也支持按对话轮次选择内容后再生成
-- 支持 ChatGPT、Google Gemini、DeepSeek 和豆包
+- 支持 ChatGPT、Google Gemini、Google 搜索 AI 模式、DeepSeek 和豆包
 - 实时流式生成，边生成边查看
 - 生成后可继续编辑内容
 - 支持复制到剪贴板或下载为 Markdown 文件
@@ -90,12 +90,12 @@ Chatdown 可以把冗长的 AI 对话整理成结构化 Markdown 文章，方便
 
 Chatdown 可以把冗長的 AI 對話整理成結構化 Markdown 文章，方便保存、編輯與發布。
 
-在 ChatGPT、Gemini、DeepSeek 或豆包中開啟對話後，點擊 Chatdown，擴充功能會擷取目前可見的對話內容，並傳送到你自行設定的相容 OpenAI 的模型端點。生成結果會即時串流回到工作區，你可以查看預覽、切換原始 Markdown、繼續編輯，並匯出最終文章。
+在 ChatGPT、Gemini、Google 搜尋 AI 模式、DeepSeek 或豆包中開啟對話後，點擊 Chatdown，擴充功能會擷取目前可見的對話內容，並傳送到你自行設定的相容 OpenAI 的模型端點。生成結果會即時串流回到工作區，你可以查看預覽、切換原始 Markdown、繼續編輯，並匯出最終文章。
 
 核心功能：
 
 - 支援從完整對話直接生成，也支援先依對話輪次挑選內容再生成
-- 支援 ChatGPT、Google Gemini、DeepSeek 和豆包
+- 支援 ChatGPT、Google Gemini、Google 搜尋 AI 模式、DeepSeek 和豆包
 - 即時串流生成，邊生成邊查看
 - 生成後可繼續編輯內容
 - 支援複製到剪貼簿或下載為 Markdown 檔案
@@ -112,12 +112,12 @@ Chatdown 可以把冗長的 AI 對話整理成結構化 Markdown 文章，方便
 
 Chatdown は、長い AI チャットを保存しやすく編集しやすい Markdown 記事に整理する Chrome 拡張です。
 
-ChatGPT、Gemini、DeepSeek、Doubao の会話ページで Chatdown をクリックすると、表示中の会話を抽出し、ユーザー自身が設定した OpenAI 互換 API に送信して記事を生成します。生成結果はワークスペースにストリーミング表示され、プレビュー確認、Markdown 切り替え、編集、エクスポートまで一連の作業を行えます。
+ChatGPT、Gemini、Google Search AI Mode、DeepSeek、Doubao の会話ページで Chatdown をクリックすると、表示中の会話を抽出し、ユーザー自身が設定した OpenAI 互換 API に送信して記事を生成します。生成結果はワークスペースにストリーミング表示され、プレビュー確認、Markdown 切り替え、編集、エクスポートまで一連の作業を行えます。
 
 主な機能:
 
 - 会話全体からの生成と、会話ラウンドを選択しての生成に対応
-- ChatGPT、Google Gemini、DeepSeek、Doubao をサポート
+- ChatGPT、Google Gemini、Google Search AI Mode、DeepSeek、Doubao をサポート
 - 生成中の進行状況をリアルタイム表示
 - 生成後に内容をそのまま編集可能
 - クリップボードコピーと Markdown ファイル保存に対応
@@ -150,7 +150,7 @@ Suggested screenshot set:
 
 Suggested captions:
 
-1. Turn a chat into an article directly from ChatGPT, Gemini, DeepSeek, or Doubao
+1. Turn a chat into an article directly from ChatGPT, Gemini, Google Search AI Mode, DeepSeek, or Doubao
 2. Pick only the conversation rounds you want to include
 3. Watch the article stream in as it is generated
 4. Review, edit, and switch between preview and Markdown
@@ -183,4 +183,4 @@ Keep promo images light on text and consistent with the extension icon.
 
 - Avoid keyword stuffing in the title or description.
 - Do not claim unsupported platforms or features.
-- The extension currently supports ChatGPT, Gemini, DeepSeek, and Doubao only.
+- The extension currently supports ChatGPT, Gemini, Google Search AI Mode, DeepSeek, and Doubao only.

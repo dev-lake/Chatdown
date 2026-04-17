@@ -4,7 +4,7 @@ export const UI_LOCALE_PREFERENCE_KEY = 'uiLocalePreference';
 
 const enMessages = {
   appName: 'Chatdown',
-  appDescription: 'Turn ChatGPT, Gemini, DeepSeek, and Doubao conversations into clean Markdown articles with preview, editing, and export.',
+  appDescription: 'Turn ChatGPT, Gemini, Google Search AI Mode, DeepSeek, and Doubao conversations into clean Markdown articles with preview, editing, and export.',
   localeAuto: 'Auto (Follow browser)',
   localeEnglish: 'English',
   localeSimplifiedChinese: '简体中文',
@@ -71,7 +71,7 @@ const enMessages = {
   settingsTypeMultiSelectOptional: 'Type: Multi-select (Optional)',
   settingsNotionPropNameHelp: 'Already exists in every database - stores the article title',
   settingsNotionPropSourceHelp: 'Stores the original conversation URL',
-  settingsNotionPropPlatformHelp: 'Records the source platform (ChatGPT, DeepSeek, Gemini, Doubao)',
+  settingsNotionPropPlatformHelp: 'Records the source platform (ChatGPT, DeepSeek, Gemini, Google Search AI Mode, Doubao)',
   settingsNotionPropTimestampHelp: 'Records when the article was created',
   settingsNotionPropTagHelp: 'For article categorization - initially empty, can be filled manually',
   settingsNotionTip: 'Tip: Add these properties to your database by clicking the "+" button in the database header',
@@ -211,7 +211,7 @@ type MessageParams = Record<string, string | number>;
 
 const zhCnMessages: Record<MessageKey, string> = {
   appName: 'Chatdown',
-  appDescription: '将 ChatGPT、Gemini、DeepSeek 和豆包对话转换为结构化 Markdown 文章，支持预览、编辑和导出。',
+  appDescription: '将 ChatGPT、Gemini、Google 搜索 AI 模式、DeepSeek 和豆包对话转换为结构化 Markdown 文章，支持预览、编辑和导出。',
   localeAuto: '自动（跟随浏览器）',
   localeEnglish: 'English',
   localeSimplifiedChinese: '简体中文',
@@ -278,7 +278,7 @@ const zhCnMessages: Record<MessageKey, string> = {
   settingsTypeMultiSelectOptional: '类型：多选（可选）',
   settingsNotionPropNameHelp: '每个数据库默认都存在，用于存储文章标题',
   settingsNotionPropSourceHelp: '存储原始对话 URL',
-  settingsNotionPropPlatformHelp: '记录来源平台（ChatGPT、DeepSeek、Gemini、豆包）',
+  settingsNotionPropPlatformHelp: '记录来源平台（ChatGPT、DeepSeek、Gemini、Google 搜索 AI 模式、豆包）',
   settingsNotionPropTimestampHelp: '记录文章创建时间',
   settingsNotionPropTagHelp: '用于文章分类，初始为空，可手动填写',
   settingsNotionTip: '提示：可以在数据库表头点击 “+” 按钮添加这些属性',
@@ -415,7 +415,7 @@ const zhCnMessages: Record<MessageKey, string> = {
 
 const zhTwMessages: Record<MessageKey, string> = {
   appName: 'Chatdown',
-  appDescription: '將 ChatGPT、Gemini、DeepSeek 和豆包對話轉換為結構化 Markdown 文章，支援預覽、編輯和匯出。',
+  appDescription: '將 ChatGPT、Gemini、Google 搜尋 AI 模式、DeepSeek 和豆包對話轉換為結構化 Markdown 文章，支援預覽、編輯和匯出。',
   localeAuto: '自動（跟隨瀏覽器）',
   localeEnglish: 'English',
   localeSimplifiedChinese: '简体中文',
@@ -482,7 +482,7 @@ const zhTwMessages: Record<MessageKey, string> = {
   settingsTypeMultiSelectOptional: '類型：多選（選用）',
   settingsNotionPropNameHelp: '每個資料庫預設都存在，用於儲存文章標題',
   settingsNotionPropSourceHelp: '儲存原始對話 URL',
-  settingsNotionPropPlatformHelp: '記錄來源平台（ChatGPT、DeepSeek、Gemini、豆包）',
+  settingsNotionPropPlatformHelp: '記錄來源平台（ChatGPT、DeepSeek、Gemini、Google 搜尋 AI 模式、豆包）',
   settingsNotionPropTimestampHelp: '記錄文章建立時間',
   settingsNotionPropTagHelp: '用於文章分類，初始為空，可手動填寫',
   settingsNotionTip: '提示：可以在資料庫表頭點擊 “+” 按鈕新增這些屬性',
@@ -619,7 +619,7 @@ const zhTwMessages: Record<MessageKey, string> = {
 
 const jaMessages: Record<MessageKey, string> = {
   appName: 'Chatdown',
-  appDescription: 'ChatGPT、Gemini、DeepSeek、Doubao の会話を構造化された Markdown 記事に変換。プレビュー、編集、エクスポート対応。',
+  appDescription: 'ChatGPT、Gemini、Google Search AI Mode、DeepSeek、Doubao の会話を構造化された Markdown 記事に変換。プレビュー、編集、エクスポート対応。',
   localeAuto: '自動（ブラウザに合わせる）',
   localeEnglish: 'English',
   localeSimplifiedChinese: '简体中文',
@@ -686,7 +686,7 @@ const jaMessages: Record<MessageKey, string> = {
   settingsTypeMultiSelectOptional: 'タイプ: マルチセレクト（任意）',
   settingsNotionPropNameHelp: 'すべてのデータベースに最初から存在し、記事タイトルを保存します',
   settingsNotionPropSourceHelp: '元の会話 URL を保存します',
-  settingsNotionPropPlatformHelp: '元のプラットフォーム（ChatGPT、DeepSeek、Gemini、Doubao）を記録します',
+  settingsNotionPropPlatformHelp: '元のプラットフォーム（ChatGPT、DeepSeek、Gemini、Google Search AI Mode、Doubao）を記録します',
   settingsNotionPropTimestampHelp: '記事が作成された時刻を記録します',
   settingsNotionPropTagHelp: '記事の分類用です。初期値は空で、後から手動入力できます',
   settingsNotionTip: 'ヒント: データベースヘッダーの “+” ボタンからこれらのプロパティを追加できます',

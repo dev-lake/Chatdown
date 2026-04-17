@@ -11,6 +11,8 @@
     "https://chat.openai.com/*",
     "https://chatgpt.com/*",
     "https://gemini.google.com/*",
+    "https://www.google.com/*",
+    "https://google.com/*",
     "https://chat.deepseek.com/*",
     "https://www.doubao.com/*",
     "https://doubao.com/*",
@@ -26,6 +28,8 @@
         "https://chat.openai.com/*",
         "https://chatgpt.com/*",
         "https://gemini.google.com/*",
+        "https://www.google.com/*",
+        "https://google.com/*",
         "https://chat.deepseek.com/*",
         "https://www.doubao.com/*",
         "https://doubao.com/*"

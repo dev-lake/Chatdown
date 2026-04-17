@@ -3,7 +3,7 @@
     "message": "Chatdown"
   },
   "extDescription": {
-    "message": "將 ChatGPT、Gemini、DeepSeek 和豆包對話轉換為結構化 Markdown 文章，支援預覽、編輯和匯出。"
+    "message": "將 ChatGPT、Gemini、Google 搜尋 AI 模式、DeepSeek 和豆包對話轉換為結構化 Markdown 文章，支援預覽、編輯和匯出。"
   },
   "actionTitle": {
     "message": "開啟 Chatdown"

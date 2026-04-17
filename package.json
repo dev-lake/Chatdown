@@ -1,7 +1,7 @@
 {
   "name": "chatdown",
   "version": "1.2.0",
-  "description": "Turn ChatGPT, Gemini, and DeepSeek conversations into clean Markdown articles with preview, editing, and export.",
+  "description": "Turn ChatGPT, Gemini, Google Search AI Mode, DeepSeek, and Doubao conversations into clean Markdown articles with preview, editing, and export.",
   "type": "module",
   "scripts": {
     "dev": "vite",

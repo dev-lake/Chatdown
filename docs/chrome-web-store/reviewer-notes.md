@@ -11,6 +11,8 @@ Supported sites:
 - https://chat.openai.com/*
 - https://chatgpt.com/*
 - https://gemini.google.com/*
+- https://www.google.com/*
+- https://google.com/*
 - https://chat.deepseek.com/*
 - https://www.doubao.com/*
 - https://doubao.com/*
@@ -65,6 +67,7 @@ The Notion and Obsidian integrations are optional and are not required to valida
 Host permissions for supported chat sites
 
 - Needed to inject the Chatdown UI and read conversation content from supported AI chat pages when the user activates the extension.
+- Google Search host access is limited in code to AI Mode pages such as `google.com/ai` and `google.com/search?udm=50`; ordinary Google Search result pages are ignored.
 
 Host permission for `https://api.notion.com/*`
 

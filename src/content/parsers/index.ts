@@ -3,6 +3,23 @@ import { ChatGPTParser } from './chatgpt';
 import { GeminiParser } from './gemini';
 import { DeepSeekParser } from './deepseek';
 import { DoubaoParser } from './doubao';
+import { GoogleAiModeParser } from './google-ai-mode';
+
+function isGoogleSearchHost(hostname: string): boolean {
+  return hostname === 'www.google.com' || hostname === 'google.com';
+}
+
+function isGoogleAiModePage(pathname: string): boolean {
+  const params = new URLSearchParams(window.location.search);
+
+  return (
+    pathname === '/ai'
+    || pathname.startsWith('/ai/')
+    || pathname === '/aimode'
+    || pathname.startsWith('/aimode/')
+    || params.get('udm') === '50'
+  );
+}
 
 export function detectPlatform(): Platform {
   const hostname = window.location.hostname;
@@ -14,6 +31,9 @@ export function detectPlatform(): Platform {
   }
   if (hostname.includes('gemini.google.com')) {
     return 'gemini';
+  }
+  if (isGoogleSearchHost(hostname) && isGoogleAiModePage(pathname)) {
+    return 'google-ai-mode';
   }
   if (hostname.includes('deepseek.com')) {
     return 'deepseek';
@@ -41,6 +61,8 @@ export function getParser(platform: Platform): ChatParser | null {
       return new DeepSeekParser();
     case 'doubao':
       return new DoubaoParser();
+    case 'google-ai-mode':
+      return new GoogleAiModeParser();
     default:
       return null;
   }

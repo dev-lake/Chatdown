@@ -15,6 +15,7 @@ const PLATFORM_SELECTORS = {
   gemini: '.right-section, .buttons-container',
   deepseek: '._2be88ba',
   doubao: 'button[data-testid="thread_share_btn_right_side"], [data-testid="chat_header_download_client"], button[data-testid="create_conversation_button"]',
+  'google-ai-mode': 'form[role="search"], [role="search"], [role="main"], main, #search, #rso',
 };
 
 let overlayRoot: Root | null = null;
@@ -24,9 +25,21 @@ const MAX_DEEPSEEK_ANCHOR_RETRIES = 30;
 let deepSeekAlignScheduled = false;
 let doubaoAnchorRetries = 0;
 const MAX_DOUBAO_ANCHOR_RETRIES = 30;
+let googleAiModeAnchorRetries = 0;
+const MAX_GOOGLE_AI_MODE_ANCHOR_RETRIES = 20;
 
 function configureButtonContainer(container: HTMLDivElement, platform: keyof typeof PLATFORM_SELECTORS) {
   container.dataset.platform = platform;
+
+  if (platform === 'google-ai-mode') {
+    container.dataset.position = 'inline';
+    container.style.display = 'inline-flex';
+    container.style.alignItems = 'center';
+    container.style.margin = '8px 0';
+    container.style.position = 'relative';
+    container.style.zIndex = '1';
+    return;
+  }
 
   if (platform !== 'deepseek' && platform !== 'doubao') {
     container.style.display = 'inline-block';
@@ -39,11 +52,11 @@ function configureButtonContainer(container: HTMLDivElement, platform: keyof typ
   container.style.alignSelf = 'center';
 }
 
-function configureFloatingButtonContainer(container: HTMLDivElement) {
-  container.dataset.platform = 'doubao';
+function configureFloatingButtonContainer(container: HTMLDivElement, platform: keyof typeof PLATFORM_SELECTORS) {
+  container.dataset.platform = platform;
   container.dataset.position = 'floating';
   container.style.position = 'fixed';
-  container.style.top = '20px';
+  container.style.top = platform === 'google-ai-mode' ? '72px' : '20px';
   container.style.right = '20px';
   container.style.zIndex = '2147483645';
   container.style.display = 'inline-flex';
@@ -291,6 +304,72 @@ function findDoubaoAnchor(): HTMLElement | null {
   return bestHeader;
 }
 
+function findGoogleAiModeAnchor(): HTMLElement | null {
+  const searchInput = findVisibleElementBySelectors([
+    'textarea[name="q"]',
+    'input[name="q"]',
+    'textarea[aria-label*="search" i]',
+    'input[aria-label*="search" i]',
+  ]);
+
+  const searchForm = searchInput?.closest('form[role="search"], form');
+  if (searchForm instanceof HTMLElement && getVisibleRect(searchForm)) {
+    return searchForm;
+  }
+
+  const searchRegion = searchInput?.closest('[role="search"]');
+  if (searchRegion instanceof HTMLElement && getVisibleRect(searchRegion)) {
+    return searchRegion;
+  }
+
+  return findVisibleElementBySelectors([
+    'form[role="search"]',
+    'form[action*="/search"]',
+    '[role="search"]',
+    '[role="main"]',
+    'main',
+    '#search',
+    '#rso',
+  ]);
+}
+
+function insertAfter(newElement: HTMLElement, referenceElement: Element): boolean {
+  const parent = referenceElement.parentElement;
+  if (!parent) {
+    return false;
+  }
+
+  parent.insertBefore(newElement, referenceElement.nextSibling);
+  return true;
+}
+
+function insertGoogleAiModeButton(container: HTMLElement, targetElement: Element) {
+  const isSearchAnchor = (
+    targetElement instanceof HTMLFormElement
+    || targetElement.getAttribute('role') === 'search'
+  );
+
+  if (isSearchAnchor && insertAfter(container, targetElement)) {
+    return;
+  }
+
+  if (targetElement === document.body) {
+    const mainContent = findVisibleElementBySelectors([
+      '[role="main"]',
+      'main',
+      '#search',
+      '#rso',
+    ]);
+
+    if (mainContent?.parentElement) {
+      mainContent.parentElement.insertBefore(container, mainContent);
+      return;
+    }
+  }
+
+  targetElement.insertBefore(container, targetElement.firstChild);
+}
+
 function resetDeepSeekButtonPosition(chatdownRoot: HTMLElement) {
   chatdownRoot.style.position = '';
   chatdownRoot.style.top = '';
@@ -385,6 +464,7 @@ function init() {
   let targetElement: Element | null = null;
   let deepSeekShareButton: Element | null = null;
   let doubaoAnchor: HTMLElement | null = null;
+  let googleAiModeAnchor: HTMLElement | null = null;
 
   if (platform === 'deepseek') {
     deepSeekShareButton = findDeepSeekShareButton();
@@ -417,6 +497,22 @@ function init() {
       targetElement = document.body;
       console.warn('[Chatdown] Doubao anchor not found after retries, using floating fallback');
     }
+  } else if (platform === 'google-ai-mode') {
+    googleAiModeAnchor = findGoogleAiModeAnchor();
+    if (googleAiModeAnchor) {
+      googleAiModeAnchorRetries = 0;
+      targetElement = googleAiModeAnchor;
+      console.log('[Chatdown] Found Google AI Mode anchor');
+    } else if (googleAiModeAnchorRetries < MAX_GOOGLE_AI_MODE_ANCHOR_RETRIES) {
+      googleAiModeAnchorRetries += 1;
+      console.log('[Chatdown] Google AI Mode anchor not ready, retrying...');
+      setTimeout(init, 300);
+      return;
+    } else {
+      googleAiModeAnchorRetries = 0;
+      targetElement = document.body;
+      console.warn('[Chatdown] Google AI Mode anchor not found after retries, using inline body fallback');
+    }
   }
 
   if (!targetElement) {
@@ -439,8 +535,11 @@ function init() {
 
   const container = document.createElement('div');
   container.id = BUTTON_ROOT_ID;
-  if (platform === 'doubao' && targetElement === document.body) {
-    configureFloatingButtonContainer(container);
+  if (
+    platform === 'doubao'
+    && targetElement === document.body
+  ) {
+    configureFloatingButtonContainer(container, platform);
   } else {
     configureButtonContainer(container, platform);
   }
@@ -480,6 +579,8 @@ function init() {
     } else {
       targetElement.appendChild(container);
     }
+  } else if (platform === 'google-ai-mode') {
+    insertGoogleAiModeButton(container, targetElement);
   } else {
     targetElement.appendChild(container);
   }
