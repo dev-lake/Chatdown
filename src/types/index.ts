@@ -66,6 +66,7 @@ export interface ChromeMessage {
     | 'articleChunk'
     | 'getArticleState'
     | 'regenerateArticle'
+    | 'cancelArticleGeneration'
     | 'exportToNotion'
     | 'exportToObsidian'
     | 'testNotionConnection'

@@ -311,7 +311,8 @@ function formatConversation(messages: Message[]): string {
 
 async function requestChatCompletion(
   config: ApiConfig,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  signal?: AbortSignal
 ): Promise<Response> {
   return fetch(`${config.apiBaseUrl}/v1/chat/completions`, {
     method: 'POST',
@@ -320,13 +321,15 @@ async function requestChatCompletion(
       'Authorization': `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify(body),
+    signal,
   });
 }
 
 async function requestTextCompletion(
   systemPrompt: string,
   userPrompt: string,
-  config: ApiConfig
+  config: ApiConfig,
+  signal?: AbortSignal
 ): Promise<string> {
   const response = await requestChatCompletion(config, {
     model: config.modelName,
@@ -342,7 +345,7 @@ async function requestTextCompletion(
     ],
     stream: false,
     temperature: 0.4,
-  });
+  }, signal);
 
   if (!response.ok) {
     const error = await response.text();
@@ -440,18 +443,24 @@ function toLocalizedErrorMessage(error: unknown, t: TranslateFn): string {
   }
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+    || error instanceof Error && error.name === 'AbortError';
+}
+
 export async function summarizeConversationRounds(
   rounds: ConversationRound[],
   messages: Message[],
   config: ApiConfig,
-  t: TranslateFn
+  t: TranslateFn,
+  signal?: AbortSignal
 ): Promise<string[]> {
   try {
     const fallbackLocale = getDominantLocale(messages);
     const hints = getRoundLanguageHints(rounds, messages, fallbackLocale);
     const prompt = buildSummaryUserPrompt(rounds, messages, hints);
 
-    const raw = await requestTextCompletion(ROUND_SUMMARY_SYSTEM_PROMPT, prompt, config);
+    const raw = await requestTextCompletion(ROUND_SUMMARY_SYSTEM_PROMPT, prompt, config, signal);
     const parsed = extractJsonObject(raw);
     const summaries = sanitizeSummaries(parsed, rounds.length);
     const mismatchIndexes = getLanguageMismatchIndexes(summaries, hints);
@@ -467,10 +476,14 @@ export async function summarizeConversationRounds(
       summaries,
       mismatchIndexes
     );
-    const retryRaw = await requestTextCompletion(ROUND_SUMMARY_SYSTEM_PROMPT, retryPrompt, config);
+    const retryRaw = await requestTextCompletion(ROUND_SUMMARY_SYSTEM_PROMPT, retryPrompt, config, signal);
     const retryParsed = extractJsonObject(retryRaw);
     return sanitizeSummaries(retryParsed, rounds.length);
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+
     throw new Error(toLocalizedErrorMessage(error, t));
   }
 }
@@ -479,7 +492,8 @@ export async function generateArticle(
   messages: Message[],
   config: ApiConfig,
   t: TranslateFn,
-  onProgress?: (chunk: string) => void | Promise<void>
+  onProgress?: (chunk: string) => void | Promise<void>,
+  signal?: AbortSignal
 ): Promise<string> {
   const targetLocale = getDominantLocale(messages);
   const prompt = buildArticleUserPrompt(messages, targetLocale);
@@ -497,7 +511,7 @@ export async function generateArticle(
       },
     ],
     stream: true,
-  });
+  }, signal);
 
   if (!response.ok) {
     const error = await response.text();

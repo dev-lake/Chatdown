@@ -355,6 +355,8 @@
 }
 
 #chatdown-overlay-root .chatdown-window__header {
+  position: relative;
+  z-index: 4;
   flex: 0 0 auto;
   border-bottom: 1px solid rgba(148, 163, 184, 0.2);
   background:
@@ -486,6 +488,7 @@
 
 #chatdown-overlay-root .chatdown-menu__content {
   position: absolute;
+  z-index: 20;
   right: 0;
   top: calc(100% + 0.5rem);
   display: flex;
@@ -494,7 +497,7 @@
   padding: 0.4rem;
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.98);
+  background: #ffffff;
   box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15);
 }
 
@@ -513,6 +516,8 @@
 }
 
 #chatdown-overlay-root .chatdown-window__body {
+  position: relative;
+  z-index: 1;
   flex: 1 1 auto;
   min-height: 0;
   background: rgba(248, 250, 252, 0.88);
@@ -526,6 +531,10 @@
 
 #chatdown-overlay-root .chatdown-window__scroll--editor {
   background: rgba(255, 255, 255, 0.85);
+}
+
+#chatdown-overlay-root .chatdown-window__scroll--streaming {
+  overflow-anchor: none;
 }
 
 #chatdown-overlay-root .chatdown-window__scroll--ai-edit {

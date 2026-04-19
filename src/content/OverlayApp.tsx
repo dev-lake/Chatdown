@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type UIEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -32,6 +32,7 @@ const MIN_WIDTH = 360;
 const MIN_HEIGHT = 320;
 const CHATDOWN_BRAND = 'Chatdown';
 const MAX_FILENAME_BASE_LENGTH = 80;
+const AUTO_SCROLL_BOTTOM_THRESHOLD = 24;
 
 interface WindowRect {
   x: number;
@@ -187,6 +188,14 @@ function getDefaultWindowRect(): WindowRect {
     x: window.innerWidth - width - 24,
     y: window.innerHeight - height - 24,
   });
+}
+
+function isScrollNearBottom(element: HTMLElement): boolean {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= AUTO_SCROLL_BOTTOM_THRESHOLD;
+}
+
+function scrollToElementBottom(element: HTMLElement): void {
+  element.scrollTop = element.scrollHeight;
 }
 
 function extractHtmlArticleTitle(content: string): string | null {
@@ -434,6 +443,8 @@ export default function OverlayApp() {
   const dragStateRef = useRef<{ startX: number; startY: number; origin: WindowRect } | null>(null);
   const resizeStateRef = useRef<ResizeState | null>(null);
   const lastSyncedMarkdownRef = useRef('');
+  const generationScrollRef = useRef<HTMLDivElement | null>(null);
+  const shouldFollowGenerationRef = useRef(true);
 
   const editor = useEditor({
     extensions: [
@@ -470,6 +481,11 @@ export default function OverlayApp() {
 
   const localEditLocksEditor = Boolean(localEditDraft);
   const localEditBusy = localEditDraft?.status === 'loading';
+  const isStreamingArticle = articleState?.phase === 'generating' || Boolean(streamingContent);
+
+  const handleGenerationScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    shouldFollowGenerationRef.current = isScrollNearBottom(event.currentTarget);
+  }, []);
 
   const handlePointerMove = useCallback((event: PointerEvent) => {
     if (dragStateRef.current) {
@@ -557,6 +573,33 @@ export default function OverlayApp() {
   }, [editor, isEditing, localEditLocksEditor]);
 
   useEffect(() => {
+    if (isStreamingArticle) {
+      shouldFollowGenerationRef.current = true;
+    }
+  }, [isStreamingArticle]);
+
+  useLayoutEffect(() => {
+    if (!isStreamingArticle || !shouldFollowGenerationRef.current) {
+      return;
+    }
+
+    const scrollElement = generationScrollRef.current;
+    if (!scrollElement) {
+      return;
+    }
+
+    scrollToElementBottom(scrollElement);
+
+    const animationFrameId = window.requestAnimationFrame(() => {
+      scrollToElementBottom(scrollElement);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+    };
+  }, [isStreamingArticle, streamingContent]);
+
+  useEffect(() => {
     const loadArticleState = async () => {
       try {
         const response = await chrome.runtime.sendMessage({ action: 'getArticleState' });
@@ -600,6 +643,11 @@ export default function OverlayApp() {
         setStreamingContent(message.state?.partialArticle || '');
         setIsEditing(false);
       } else if (message.action === 'articleChunk') {
+        const scrollElement = generationScrollRef.current;
+        if (scrollElement) {
+          shouldFollowGenerationRef.current = isScrollNearBottom(scrollElement);
+        }
+
         setStreamingContent((current) => current + (message.chunk || ''));
       }
     };
@@ -965,6 +1013,34 @@ export default function OverlayApp() {
       }
     } catch {
       window.alert(t('overlayFailedToRegenerate'));
+    }
+  };
+
+  const handleCancelGeneration = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        action: 'cancelArticleGeneration',
+      });
+
+      if (!response?.success) {
+        if (response?.state) {
+          applyArticleStateToView(
+            response.state,
+            setArticleState,
+            setMarkdownContent,
+            setStreamingContent,
+            setIsEditing
+          );
+        }
+
+        window.alert(
+          response?.error
+            ? t('overlayFailedToCancelGenerationWithReason', { error: response.error })
+            : t('overlayFailedToCancelGeneration')
+        );
+      }
+    } catch {
+      window.alert(t('overlayFailedToCancelGeneration'));
     }
   };
 
@@ -1335,7 +1411,11 @@ export default function OverlayApp() {
 
     if (articleState?.phase === 'generating' || streamingContent) {
       return (
-        <div className="chatdown-window__scroll">
+        <div
+          className="chatdown-window__scroll chatdown-window__scroll--streaming"
+          ref={generationScrollRef}
+          onScroll={handleGenerationScroll}
+        >
           {streamingContent ? (
             renderMarkdown(streamingContent)
           ) : (
@@ -1430,11 +1510,33 @@ export default function OverlayApp() {
                 </div>
               </>
             ) : articleState?.phase === 'summarizing_rounds' ? (
-              <span className="chatdown-status">{t('overlayStatusSummarizing')}</span>
+              <>
+                <span className="chatdown-status">{t('overlayStatusSummarizing')}</span>
+                <div className="chatdown-toolbar__buttons">
+                  <button
+                    type="button"
+                    className="chatdown-secondary-button"
+                    onClick={() => void handleCancelGeneration()}
+                  >
+                    {t('commonCancel')}
+                  </button>
+                </div>
+              </>
             ) : articleState?.phase === 'selecting_rounds' ? (
               <span className="chatdown-status">{t('overlayStatusSelecting')}</span>
             ) : articleState?.phase === 'generating' ? (
-              <span className="chatdown-status">{t('overlayStatusGenerating')}</span>
+              <>
+                <span className="chatdown-status">{t('overlayStatusGenerating')}</span>
+                <div className="chatdown-toolbar__buttons">
+                  <button
+                    type="button"
+                    className="chatdown-secondary-button"
+                    onClick={() => void handleCancelGeneration()}
+                  >
+                    {t('commonCancel')}
+                  </button>
+                </div>
+              </>
             ) : exporting ? (
               <span className="chatdown-status">
                 {t(exportTarget === 'obsidian' ? 'overlayStatusExportingToObsidian' : 'overlayStatusExporting')}

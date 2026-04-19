@@ -46,6 +46,17 @@ interface SelectionPreparationResult {
   error?: string;
 }
 
+type ActiveWorkflowPhase = 'summarizing_rounds' | 'generating';
+
+interface ActiveWorkflow {
+  id: number;
+  phase: ActiveWorkflowPhase;
+  controller: AbortController;
+}
+
+const activeWorkflows = new Map<number, ActiveWorkflow>();
+let activeWorkflowSequence = 0;
+
 function getArticleStateStorageKey(tabId: number): string {
   return `${ARTICLE_STATE_KEY_PREFIX}${tabId}`;
 }
@@ -216,6 +227,50 @@ function getTabIdFromSender(
   }
 
   return tabId;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+    || error instanceof Error && error.name === 'AbortError';
+}
+
+function beginActiveWorkflow(tabId: number, phase: ActiveWorkflowPhase): ActiveWorkflow {
+  const currentWorkflow = activeWorkflows.get(tabId);
+
+  if (currentWorkflow) {
+    currentWorkflow.controller.abort();
+  }
+
+  const workflow: ActiveWorkflow = {
+    id: activeWorkflowSequence + 1,
+    phase,
+    controller: new AbortController(),
+  };
+
+  activeWorkflowSequence = workflow.id;
+  activeWorkflows.set(tabId, workflow);
+  return workflow;
+}
+
+function isCurrentActiveWorkflow(tabId: number, workflow: ActiveWorkflow): boolean {
+  return activeWorkflows.get(tabId)?.id === workflow.id;
+}
+
+function clearActiveWorkflow(tabId: number, workflow: ActiveWorkflow): void {
+  if (isCurrentActiveWorkflow(tabId, workflow)) {
+    activeWorkflows.delete(tabId);
+  }
+}
+
+function cancelActiveWorkflow(tabId: number): boolean {
+  const workflow = activeWorkflows.get(tabId);
+
+  if (!workflow) {
+    return false;
+  }
+
+  workflow.controller.abort();
+  return true;
 }
 
 function hashString(content: string): string {
@@ -425,6 +480,78 @@ async function restoreVisibleArticle(
   return restoredState;
 }
 
+async function publishCanceledWorkflow(
+  tabId: number,
+  t: TranslateFn,
+  previousVisibleState: ArticleState | null,
+  idleState: Partial<ArticleState>
+): Promise<ArticleState> {
+  const notice = t('backgroundGenerationCanceled');
+
+  if (previousVisibleState) {
+    return restoreVisibleArticle(tabId, previousVisibleState, notice);
+  }
+
+  const state = await setArticleStateForTab(tabId, {
+    article: '',
+    partialArticle: '',
+    phase: 'idle',
+    notice,
+    ...idleState,
+  });
+
+  await emitStateMessage(tabId, 'displayArticle', state, {
+    article: '',
+  });
+
+  return state;
+}
+
+async function publishCanceledArticleGeneration(
+  tabId: number,
+  request: GenerationRequest,
+  t: TranslateFn,
+  conversationHash: string,
+  selectedRoundIds: string[],
+  partialArticle: string,
+  previousVisibleState: ArticleState | null
+): Promise<ArticleState> {
+  const notice = t('backgroundGenerationCanceled');
+  const rounds = request.mode === 'partial' ? request.rounds : [];
+
+  if (partialArticle.trim()) {
+    const state = await setArticleStateForTab(tabId, {
+      article: partialArticle,
+      partialArticle: '',
+      conversationHash,
+      messages: request.allMessages,
+      sourceUrl: request.sourceUrl,
+      platform: request.platform,
+      phase: 'ready',
+      mode: request.mode,
+      rounds,
+      selectedRoundIds,
+      notice,
+    });
+
+    await emitStateMessage(tabId, 'displayArticle', state, {
+      article: partialArticle,
+    });
+
+    return state;
+  }
+
+  return publishCanceledWorkflow(tabId, t, previousVisibleState, {
+    conversationHash,
+    messages: request.allMessages,
+    sourceUrl: request.sourceUrl,
+    platform: request.platform,
+    mode: request.mode,
+    rounds,
+    selectedRoundIds,
+  });
+}
+
 async function resumeWorkflowForState(tabId: number, state: ArticleState): Promise<void> {
   if (state.phase === 'summarizing_rounds') {
     await emitStateMessage(tabId, 'partialSelectionLoading', state);
@@ -504,6 +631,9 @@ async function runArticleGeneration(
   }
 
   let partialArticle = '';
+  const previousState = await getArticleStateForTab(tabId);
+  const previousVisibleState = isVisibleArticleState(previousState) ? previousState : null;
+  const workflow = beginActiveWorkflow(tabId, 'generating');
 
   const generatingState = await setArticleStateForTab(tabId, {
     article: '',
@@ -523,6 +653,10 @@ async function runArticleGeneration(
 
   try {
     const article = await generateArticle(request.articleMessages, config, t, async (chunk) => {
+      if (!isCurrentActiveWorkflow(tabId, workflow) || workflow.controller.signal.aborted) {
+        return;
+      }
+
       partialArticle += chunk;
 
       await setArticleStateForTab(tabId, {
@@ -534,7 +668,23 @@ async function runArticleGeneration(
         action: 'articleChunk',
         chunk,
       });
-    });
+    }, workflow.controller.signal);
+
+    if (!isCurrentActiveWorkflow(tabId, workflow)) {
+      return getArticleStateForTab(tabId);
+    }
+
+    if (workflow.controller.signal.aborted) {
+      return publishCanceledArticleGeneration(
+        tabId,
+        request,
+        t,
+        conversationHash,
+        normalizedSelectedRoundIds,
+        partialArticle,
+        previousVisibleState
+      );
+    }
 
     const articleWithSource = appendSourceUrl(article, request.sourceUrl);
 
@@ -560,6 +710,26 @@ async function runArticleGeneration(
 
     return nextState;
   } catch (error) {
+    if (isAbortError(error)) {
+      if (!isCurrentActiveWorkflow(tabId, workflow)) {
+        return getArticleStateForTab(tabId);
+      }
+
+      return publishCanceledArticleGeneration(
+        tabId,
+        request,
+        t,
+        conversationHash,
+        normalizedSelectedRoundIds,
+        partialArticle,
+        previousVisibleState
+      );
+    }
+
+    if (!isCurrentActiveWorkflow(tabId, workflow)) {
+      return getArticleStateForTab(tabId);
+    }
+
     const errorMessage = error instanceof Error ? error.message : t('commonUnknownError');
 
     await publishError(tabId, t, errorMessage, {
@@ -573,6 +743,8 @@ async function runArticleGeneration(
     });
 
     throw new Error(errorMessage);
+  } finally {
+    clearActiveWorkflow(tabId, workflow);
   }
 }
 
@@ -625,8 +797,35 @@ async function preparePartialSelection(
 
   await emitStateMessage(tabId, 'partialSelectionLoading', loadingState);
 
+  const workflow = beginActiveWorkflow(tabId, 'summarizing_rounds');
+
   try {
-    const summaries = await summarizeConversationRounds(baseRounds, messages, config, t);
+    const summaries = await summarizeConversationRounds(
+      baseRounds,
+      messages,
+      config,
+      t,
+      workflow.controller.signal
+    );
+
+    if (!isCurrentActiveWorkflow(tabId, workflow)) {
+      return { state: await getArticleStateForTab(tabId) };
+    }
+
+    if (workflow.controller.signal.aborted) {
+      const state = await publishCanceledWorkflow(tabId, t, previousVisibleState, {
+        conversationHash,
+        messages,
+        sourceUrl,
+        platform,
+        mode: 'partial',
+        rounds: baseRounds,
+        selectedRoundIds: [],
+      });
+
+      return { state };
+    }
+
     const rounds = applyRoundSummaries(baseRounds, summaries);
 
     const nextState = await setArticleStateForTab(tabId, {
@@ -647,6 +846,28 @@ async function preparePartialSelection(
 
     return { state: nextState };
   } catch (error) {
+    if (isAbortError(error)) {
+      if (!isCurrentActiveWorkflow(tabId, workflow)) {
+        return { state: await getArticleStateForTab(tabId) };
+      }
+
+      const state = await publishCanceledWorkflow(tabId, t, previousVisibleState, {
+        conversationHash,
+        messages,
+        sourceUrl,
+        platform,
+        mode: 'partial',
+        rounds: baseRounds,
+        selectedRoundIds: [],
+      });
+
+      return { state };
+    }
+
+    if (!isCurrentActiveWorkflow(tabId, workflow)) {
+      return { state: await getArticleStateForTab(tabId) };
+    }
+
     const errorMessage = error instanceof Error ? error.message : t('backgroundFailedToSummarizeRounds');
 
     if (previousVisibleState) {
@@ -665,6 +886,8 @@ async function preparePartialSelection(
     });
 
     return { state: errorState, error: errorMessage };
+  } finally {
+    clearActiveWorkflow(tabId, workflow);
   }
 }
 
@@ -692,6 +915,11 @@ chrome.runtime.onMessage.addListener(
 
     if (message.action === 'regenerateArticle') {
       void handleRegenerateArticle(message, sender, sendResponse);
+      return true;
+    }
+
+    if (message.action === 'cancelArticleGeneration') {
+      void handleCancelArticleGeneration(sender, sendResponse);
       return true;
     }
 
@@ -725,6 +953,8 @@ chrome.runtime.onMessage.addListener(
 );
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  activeWorkflows.get(tabId)?.controller.abort();
+  activeWorkflows.delete(tabId);
   void clearArticleStateForTab(tabId);
 });
 
@@ -983,6 +1213,42 @@ async function handleRegenerateArticle(
     });
   } catch (error) {
     sendResponse({
+      error: error instanceof Error ? error.message : t('commonUnknownError'),
+      state: await getArticleStateForTab(tabId),
+    });
+  }
+}
+
+async function handleCancelArticleGeneration(
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: ChromeResponse) => void
+) {
+  const { t } = await getCurrentLocaleContext();
+  const tabId = getTabIdFromSender(sender, sendResponse, t);
+  if (tabId === null) {
+    return;
+  }
+
+  try {
+    const canceled = cancelActiveWorkflow(tabId);
+    const state = await getArticleStateForTab(tabId);
+
+    if (!canceled) {
+      sendResponse({
+        success: false,
+        error: t('backgroundNoActiveGeneration'),
+        state,
+      });
+      return;
+    }
+
+    sendResponse({
+      success: true,
+      state,
+    });
+  } catch (error) {
+    sendResponse({
+      success: false,
       error: error instanceof Error ? error.message : t('commonUnknownError'),
       state: await getArticleStateForTab(tabId),
     });
