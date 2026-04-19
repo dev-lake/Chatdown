@@ -106,9 +106,69 @@
   margin: 0 !important;
 }
 
+#chatdown-root[data-platform="google-ai-mode"] {
+  display: block !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  margin: 12px 0 16px !important;
+}
+
+#chatdown-root[data-platform="google-ai-mode"][data-position="toolbar"] {
+  display: inline-flex !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 0 0 8px !important;
+  align-items: center !important;
+  align-self: center !important;
+  flex: 0 0 auto !important;
+}
+
+#chatdown-root[data-platform="google-ai-mode"][data-position="header"] {
+  display: inline-flex !important;
+  position: fixed !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  align-items: center !important;
+  align-self: center !important;
+  flex: 0 0 auto !important;
+  z-index: 2147483644 !important;
+}
+
 #chatdown-root[data-platform="deepseek"] .chatdown-split-button,
 #chatdown-root[data-platform="doubao"] .chatdown-split-button {
   flex-shrink: 0 !important;
+}
+
+#chatdown-root[data-platform="google-ai-mode"] .chatdown-split-button {
+  flex-shrink: 0 !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08) !important;
+}
+
+#chatdown-root[data-platform="google-ai-mode"][data-position="header"] .chatdown-split-button {
+  height: 40px !important;
+  border-radius: 20px !important;
+  box-shadow: none !important;
+}
+
+#chatdown-root[data-platform="google-ai-mode"][data-position="header"] .chatdown-split-button__main,
+#chatdown-root[data-platform="google-ai-mode"][data-position="header"] .chatdown-split-button__toggle {
+  height: 40px !important;
+  min-height: 40px !important;
+  padding-block: 0 !important;
+  font-size: 14px !important;
+  line-height: 20px !important;
+}
+
+#chatdown-root[data-platform="google-ai-mode"][data-position="header"] .chatdown-split-button__main {
+  padding-inline: 12px !important;
+}
+
+#chatdown-root[data-platform="google-ai-mode"][data-position="header"] .chatdown-split-button__toggle {
+  min-width: 40px !important;
+  padding-inline: 8px !important;
 }
 
 #chatdown-root[data-position="floating"] .chatdown-split-button {

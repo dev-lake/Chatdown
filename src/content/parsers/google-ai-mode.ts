@@ -2,7 +2,26 @@ import type { ChatParser, Message } from '../../types';
 
 const MIN_ASSISTANT_LENGTH = 80;
 
+const TURN_CONTAINER_SELECTOR = '.CKgc1d[data-scope-id="turn"], [data-scope-id="turn"].CKgc1d, [data-scope-id="turn"]';
+
+const TURN_USER_SELECTOR = [
+  '.VndcI[role="heading"]',
+  '[role="heading"].VndcI',
+  '[aria-level="2"][role="heading"]',
+].join(', ');
+
+const TURN_ASSISTANT_SELECTOR = [
+  '[data-subtree="aimc"] [data-container-id="main-col"]',
+  '[data-subtree="aimc"] [data-xid="VpUvz"]',
+  '[data-subtree="aimc"] [jsname="KFl8ub"]',
+  '[data-subtree="aimc"]',
+].join(', ');
+
 const USER_MESSAGE_SELECTORS = [
+  '[data-scope-id="turn"] .VndcI[role="heading"]',
+  '[data-scope-id="turn"] [aria-level="2"][role="heading"]',
+  '[data-dq]',
+  '[data-query]',
   '[data-testid*="user" i]',
   '[data-test-id*="user" i]',
   '[data-user-query]',
@@ -12,6 +31,13 @@ const USER_MESSAGE_SELECTORS = [
   '[aria-label*="user query" i]',
   '[aria-label*="search query" i]',
   '[aria-label*="question" i]',
+];
+
+const USER_QUERY_ATTRIBUTE_NAMES = [
+  'data-user-query',
+  'data-query-text',
+  'data-query',
+  'data-dq',
 ];
 
 const ASSISTANT_MESSAGE_SELECTORS = [
@@ -79,13 +105,81 @@ const REMOVABLE_SELECTORS = [
   'header',
   'footer',
   'nav',
+  '[hidden]',
   '[role="navigation"]',
   '[role="search"]',
+  '[role="dialog"]',
+  '[role="alert"]',
+  '[aria-hidden="true"]',
   '[aria-label*="share" i]',
   '[aria-label*="feedback" i]',
   '[aria-label*="settings" i]',
   '[aria-label*="google apps" i]',
+  '[style*="display:none"]',
+  '[style*="display: none"]',
+  '[style*="visibility:hidden"]',
+  '[style*="visibility: hidden"]',
+  '[data-crb-el]',
+  '[data-type="hovc"]',
+  '[data-xid="aim-aside-initial-corroboration-container"]',
+  '[data-container-id="rhs-col"]',
+  '[data-skip-highlighting]',
+  '.DBd2Wb',
+  '.Dr5uic',
+  '.Fsg96',
+  '.FYF80',
+  '.HvurC',
+  '.MFrAxb',
+  '.OUQe0e',
+  '.SGF5Lb',
+  '.UrecDd',
+  '.W94uae',
+  '.YHsVn',
+  '.alk4p',
+  '.bKxaof',
+  '.dcCF7d',
+  '.eGAasd',
+  '.jKhXsc',
+  '.qacuz',
+  '.rBl3me',
+  '.txxDge',
+  '.uJ19be',
 ];
+
+const REMOVABLE_SELECTOR = REMOVABLE_SELECTORS.join(', ');
+
+const BLOCK_TEXT_SEPARATOR_SELECTOR = [
+  'article',
+  'aside',
+  'blockquote',
+  'dd',
+  'details',
+  'div',
+  'dl',
+  'dt',
+  'figcaption',
+  'figure',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'li',
+  'main',
+  'ol',
+  'p',
+  'pre',
+  'section',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'tr',
+  'ul',
+].join(', ');
 
 const UI_ONLY_LINES = new Set([
   'ai mode',
@@ -160,12 +254,60 @@ function isUiOnlyText(text: string): boolean {
 }
 
 function removeNoisyElements(container: HTMLElement) {
-  for (const selector of REMOVABLE_SELECTORS) {
-    container.querySelectorAll(selector).forEach((node) => node.remove());
+  container.querySelectorAll(REMOVABLE_SELECTOR).forEach((node) => node.remove());
+}
+
+function isHiddenElement(element: HTMLElement): boolean {
+  if (element.matches(REMOVABLE_SELECTOR)) {
+    return true;
+  }
+
+  const style = window.getComputedStyle(element);
+  return style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
+}
+
+function appendVisibleText(node: Node, parts: string[]) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    parts.push(node.textContent || '');
+    return;
+  }
+
+  if (!(node instanceof HTMLElement)) {
+    node.childNodes.forEach((child) => appendVisibleText(child, parts));
+    return;
+  }
+
+  if (isHiddenElement(node)) {
+    return;
+  }
+
+  if (node instanceof HTMLBRElement) {
+    parts.push('\n');
+    return;
+  }
+
+  node.childNodes.forEach((child) => appendVisibleText(child, parts));
+
+  if (node.matches(BLOCK_TEXT_SEPARATOR_SELECTOR)) {
+    parts.push('\n');
   }
 }
 
+function extractVisibleText(element: Element): string {
+  const parts: string[] = [];
+  appendVisibleText(element, parts);
+
+  return normalizeText(parts.join('').replace(/[ \t]*\n[ \t]*/g, '\n'));
+}
+
 function extractText(element: Element): string {
+  if (document.documentElement.contains(element)) {
+    const visibleText = extractVisibleText(element);
+    if (visibleText) {
+      return visibleText;
+    }
+  }
+
   if (!(element instanceof HTMLElement)) {
     return normalizeText(element.textContent || '');
   }
@@ -182,6 +324,26 @@ function extractText(element: Element): string {
 function getInputValue(element: Element): string {
   if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
     return normalizeText(element.value || element.getAttribute('value') || '');
+  }
+
+  return extractText(element);
+}
+
+function getAttributeText(element: Element, attributeNames: string[]): string {
+  for (const attributeName of attributeNames) {
+    const value = normalizeText(element.getAttribute(attributeName) || '');
+    if (value) {
+      return value;
+    }
+  }
+
+  return '';
+}
+
+function extractUserText(element: Element): string {
+  const attributeText = getAttributeText(element, USER_QUERY_ATTRIBUTE_NAMES);
+  if (attributeText) {
+    return attributeText;
   }
 
   return extractText(element);
@@ -254,7 +416,7 @@ function extractUserQueries(): string[] {
   for (const selector of USER_MESSAGE_SELECTORS) {
     document.querySelectorAll(selector).forEach((element) => {
       if (isVisible(element)) {
-        queries.push(extractText(element));
+        queries.push(extractUserText(element));
       }
     });
   }
@@ -290,6 +452,134 @@ function cleanAssistantText(text: string, userQueries: string[]): string {
     });
 
   return normalizeText(lines.join('\n'));
+}
+
+function isKnownQueryLine(line: string, userQueries: string[]): boolean {
+  const comparableLine = getComparableText(line);
+  return userQueries.some((query) => getComparableText(query) === comparableLine);
+}
+
+function hasQuestionSignal(line: string): boolean {
+  return (
+    /[?？]$/.test(line)
+    || /^(how|what|why|when|where|which|who|can|could|should|would|is|are|do|does|did|explain|compare|show|list|tell me)\b/i.test(line)
+    || /^(如何|怎么|怎样|什么|为什么|为何|是否|能否|可以|可否|应该|哪|哪些|谁|何时|何处|请问|请|继续|比较|解释|展开|还有|如果)/.test(line)
+  );
+}
+
+function looksLikeFollowUpLine(line: string): boolean {
+  const normalized = normalizeText(line);
+  if (
+    normalized.length < 4
+    || normalized.length > 180
+    || isUiOnlyText(normalized)
+    || /^https?:\/\//i.test(normalized)
+    || /^[•\-–—*]\s/.test(normalized)
+    || /^\d+[\).、]\s/.test(normalized)
+  ) {
+    return false;
+  }
+
+  return hasQuestionSignal(normalized);
+}
+
+function splitAssistantContentIntoTurns(userQueries: string[], rawAssistantContent: string): Message[] {
+  const normalizedQueries = uniqueTexts(userQueries);
+  const initialUserQuery = normalizedQueries[0];
+  if (!initialUserQuery) {
+    return [];
+  }
+
+  const lines = normalizeText(rawAssistantContent)
+    .split('\n')
+    .map((line) => normalizeText(line))
+    .filter(Boolean);
+  const messages: Message[] = [];
+  let currentUserQuery = initialUserQuery;
+  let currentAssistantLines: string[] = [];
+
+  const pushCurrentRound = () => {
+    const assistantContent = cleanAssistantText(currentAssistantLines.join('\n'), [currentUserQuery]);
+    if (assistantContent.length < MIN_ASSISTANT_LENGTH) {
+      return;
+    }
+
+    messages.push({
+      role: 'user',
+      content: currentUserQuery,
+    });
+    messages.push({
+      role: 'assistant',
+      content: assistantContent,
+    });
+  };
+
+  for (const line of lines) {
+    const isKnownQuery = isKnownQueryLine(line, normalizedQueries);
+    const isFollowUp = currentAssistantLines.join('\n').length >= MIN_ASSISTANT_LENGTH && looksLikeFollowUpLine(line);
+
+    if (isKnownQuery || isFollowUp) {
+      const sameAsCurrentQuery = getComparableText(line) === getComparableText(currentUserQuery);
+      if (sameAsCurrentQuery && currentAssistantLines.length === 0) {
+        continue;
+      }
+
+      if (currentAssistantLines.join('\n').length >= MIN_ASSISTANT_LENGTH) {
+        pushCurrentRound();
+        currentUserQuery = line;
+        currentAssistantLines = [];
+        continue;
+      }
+
+      currentUserQuery = line;
+      currentAssistantLines = [];
+      continue;
+    }
+
+    if (!isUiOnlyText(line) && !isKnownQueryLine(line, normalizedQueries)) {
+      currentAssistantLines.push(line);
+    }
+  }
+
+  pushCurrentRound();
+
+  const userMessageCount = messages.filter((message) => message.role === 'user').length;
+  return userMessageCount > 1 ? normalizeMessages(messages) : [];
+}
+
+function extractTurnMessages(): Message[] {
+  const messages: Message[] = [];
+
+  document.querySelectorAll(TURN_CONTAINER_SELECTOR).forEach((turn) => {
+    if (turn.closest('#chatdown-root, #chatdown-overlay-root, #chatdown-button-menu-root')) {
+      return;
+    }
+
+    const userElement = turn.querySelector(TURN_USER_SELECTOR);
+    const userContent = userElement ? extractUserText(userElement) : '';
+    if (!userContent || isUiOnlyText(userContent)) {
+      return;
+    }
+
+    const assistantElement = turn.querySelector(TURN_ASSISTANT_SELECTOR);
+    const assistantContent = assistantElement
+      ? cleanAssistantText(extractText(assistantElement), [userContent])
+      : '';
+
+    messages.push({
+      role: 'user',
+      content: userContent,
+    });
+
+    if (assistantContent.length >= MIN_ASSISTANT_LENGTH) {
+      messages.push({
+        role: 'assistant',
+        content: assistantContent,
+      });
+    }
+  });
+
+  return normalizeMessages(messages);
 }
 
 function normalizeMessages(messages: Message[]): Message[] {
@@ -350,7 +640,7 @@ function extractStructuredMessages(userQueries: string[]): Message[] {
   const messages = candidates
     .sort((a, b) => getDocumentOrder(a.element, b.element))
     .map(({ element, role }) => {
-      const rawContent = extractText(element);
+      const rawContent = role === 'user' ? extractUserText(element) : extractText(element);
       const content = role === 'assistant' ? cleanAssistantText(rawContent, userQueries) : rawContent;
 
       if (role === 'assistant' && content.length < MIN_ASSISTANT_LENGTH) {
@@ -445,12 +735,28 @@ function extractAssistantResponse(userQueries: string[]): string {
 
 export class GoogleAiModeParser implements ChatParser {
   parse(): Message[] {
+    const turnMessages = extractTurnMessages();
+    if (turnMessages.some((message) => message.role === 'assistant')) {
+      return turnMessages;
+    }
+
     const userQueries = extractUserQueries();
     const structuredMessages = extractStructuredMessages(userQueries);
     const hasAssistantMessage = structuredMessages.some((message) => message.role === 'assistant');
 
     if (hasAssistantMessage) {
-      if (structuredMessages.some((message) => message.role === 'user') || userQueries.length === 0) {
+      const structuredUserMessageCount = structuredMessages.filter((message) => message.role === 'user').length;
+      if (structuredUserMessageCount > 1) {
+        return structuredMessages;
+      }
+
+      const rawAssistantContent = extractAssistantResponse([]);
+      const splitTurnMessages = splitAssistantContentIntoTurns(userQueries, rawAssistantContent);
+      if (splitTurnMessages.length > 0) {
+        return splitTurnMessages;
+      }
+
+      if (structuredUserMessageCount === 1 || userQueries.length === 0) {
         return structuredMessages;
       }
 
@@ -463,7 +769,13 @@ export class GoogleAiModeParser implements ChatParser {
       ]);
     }
 
-    const assistantContent = extractAssistantResponse(userQueries);
+    const rawAssistantContent = extractAssistantResponse([]);
+    const splitTurnMessages = splitAssistantContentIntoTurns(userQueries, rawAssistantContent);
+    if (splitTurnMessages.length > 0) {
+      return splitTurnMessages;
+    }
+
+    const assistantContent = cleanAssistantText(rawAssistantContent, userQueries);
     const messages: Message[] = [];
 
     if (userQueries.length > 0) {

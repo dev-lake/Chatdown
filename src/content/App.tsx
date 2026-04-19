@@ -9,6 +9,10 @@ function isBusyPhase(phase: WorkflowPhase | undefined): boolean {
   return phase === 'summarizing_rounds' || phase === 'generating';
 }
 
+function stopHostClickPropagation(event: { stopPropagation: () => void }) {
+  event.stopPropagation();
+}
+
 export default function App() {
   const { locale, t } = useI18n();
   const [loading, setLoading] = useState(false);
@@ -177,6 +181,9 @@ export default function App() {
         className="chatdown-split-button"
         ref={buttonGroupRef}
         lang={locale}
+        onClick={stopHostClickPropagation}
+        onMouseDown={stopHostClickPropagation}
+        onPointerDown={stopHostClickPropagation}
       >
         <button
           type="button"

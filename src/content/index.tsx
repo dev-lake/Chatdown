@@ -15,7 +15,7 @@ const PLATFORM_SELECTORS = {
   gemini: '.right-section, .buttons-container',
   deepseek: '._2be88ba',
   doubao: 'button[data-testid="thread_share_btn_right_side"], [data-testid="chat_header_download_client"], button[data-testid="create_conversation_button"]',
-  'google-ai-mode': 'form[role="search"], [role="search"], [role="main"], main, #search, #rso',
+  'google-ai-mode': '#gbwa .gb_D > a.gb_C, #gbwa a.gb_C[aria-label], header a.gb_C[href*="/about/products"], div[jsname="oEQ3x"] .KCMqmc, div[jsname="oEQ3x"] .NyTqE, [role="main"], main, #search, #rso, form[role="search"], [role="search"]',
 };
 
 let overlayRoot: Root | null = null;
@@ -27,6 +27,8 @@ let doubaoAnchorRetries = 0;
 const MAX_DOUBAO_ANCHOR_RETRIES = 30;
 let googleAiModeAnchorRetries = 0;
 const MAX_GOOGLE_AI_MODE_ANCHOR_RETRIES = 20;
+let googleAiModeHeaderAnchor: HTMLElement | null = null;
+let googleAiModeAlignScheduled = false;
 
 function configureButtonContainer(container: HTMLDivElement, platform: keyof typeof PLATFORM_SELECTORS) {
   container.dataset.platform = platform;
@@ -304,7 +306,42 @@ function findDoubaoAnchor(): HTMLElement | null {
   return bestHeader;
 }
 
+function findGoogleAiModeAppsButton(): HTMLElement | null {
+  return findVisibleElementBySelectors([
+    '#gbwa .gb_D > a.gb_C',
+    '#gbwa a.gb_C[aria-label*="Google" i]',
+    'header a.gb_C[href*="/about/products"]',
+    'header a.gb_C[href*="about/products"]',
+  ]);
+}
+
 function findGoogleAiModeAnchor(): HTMLElement | null {
+  const googleAppsButton = findGoogleAiModeAppsButton();
+  if (googleAppsButton) {
+    return googleAppsButton;
+  }
+
+  const toolbar = findVisibleElementBySelectors([
+    'div[jsname="oEQ3x"] .KCMqmc',
+    'div[jsname="oEQ3x"] .NyTqE',
+    'div[jsname="oEQ3x"] .eT9Cje',
+  ]);
+
+  if (toolbar) {
+    return toolbar;
+  }
+
+  const mainContent = findVisibleElementBySelectors([
+    '[role="main"]',
+    'main',
+    '#search',
+    '#rso',
+  ]);
+
+  if (mainContent) {
+    return mainContent;
+  }
+
   const searchInput = findVisibleElementBySelectors([
     'textarea[name="q"]',
     'input[name="q"]',
@@ -344,6 +381,41 @@ function insertAfter(newElement: HTMLElement, referenceElement: Element): boolea
 }
 
 function insertGoogleAiModeButton(container: HTMLElement, targetElement: Element) {
+  const isGoogleAppsAnchor = (
+    targetElement instanceof HTMLAnchorElement
+    && targetElement.classList.contains('gb_C')
+    && (
+      targetElement.closest('#gbwa') !== null
+      || (targetElement.getAttribute('href') || '').includes('about/products')
+    )
+  );
+
+  if (isGoogleAppsAnchor && targetElement.parentElement) {
+    googleAiModeHeaderAnchor = targetElement;
+    container.dataset.position = 'header';
+    container.style.position = 'fixed';
+    container.style.margin = '0';
+    container.style.visibility = 'hidden';
+    container.style.zIndex = '2147483644';
+    document.body.appendChild(container);
+    return;
+  }
+
+  const isToolbarAnchor = (
+    targetElement instanceof HTMLElement
+    && (
+      targetElement.matches('.KCMqmc, .NyTqE, .eT9Cje')
+      || targetElement.closest('div[jsname="oEQ3x"]') !== null
+    )
+  );
+
+  if (isToolbarAnchor) {
+    container.dataset.position = 'toolbar';
+    container.style.margin = '0 0 0 8px';
+    targetElement.appendChild(container);
+    return;
+  }
+
   const isSearchAnchor = (
     targetElement instanceof HTMLFormElement
     || targetElement.getAttribute('role') === 'search'
@@ -354,15 +426,15 @@ function insertGoogleAiModeButton(container: HTMLElement, targetElement: Element
   }
 
   if (targetElement === document.body) {
-    const mainContent = findVisibleElementBySelectors([
+    const fallbackMainContent = findVisibleElementBySelectors([
       '[role="main"]',
       'main',
       '#search',
       '#rso',
     ]);
 
-    if (mainContent?.parentElement) {
-      mainContent.parentElement.insertBefore(container, mainContent);
+    if (fallbackMainContent?.parentElement) {
+      fallbackMainContent.parentElement.insertBefore(container, fallbackMainContent);
       return;
     }
   }
@@ -443,6 +515,51 @@ function scheduleDeepSeekAlignment() {
   window.requestAnimationFrame(() => {
     deepSeekAlignScheduled = false;
     alignDeepSeekButtonToShare();
+  });
+}
+
+function alignGoogleAiModeHeaderButton() {
+  const chatdownRoot = document.getElementById(BUTTON_ROOT_ID);
+  const anchor = googleAiModeHeaderAnchor && document.body.contains(googleAiModeHeaderAnchor)
+    ? googleAiModeHeaderAnchor
+    : findGoogleAiModeAppsButton();
+
+  if (!(chatdownRoot instanceof HTMLElement) || !(anchor instanceof HTMLElement)) {
+    return;
+  }
+
+  if (chatdownRoot.dataset.platform !== 'google-ai-mode' || chatdownRoot.dataset.position !== 'header') {
+    return;
+  }
+
+  const anchorRect = getVisibleRect(anchor);
+  const rootRect = chatdownRoot.getBoundingClientRect();
+  if (!anchorRect || rootRect.width <= 0 || rootRect.height <= 0) {
+    return;
+  }
+
+  const gap = 8;
+  const top = anchorRect.top + ((anchorRect.height - rootRect.height) / 2);
+  const left = anchorRect.left - rootRect.width - gap;
+
+  chatdownRoot.style.top = `${Math.max(0, Math.round(top))}px`;
+  chatdownRoot.style.left = `${Math.max(8, Math.round(left))}px`;
+  chatdownRoot.style.right = 'auto';
+  chatdownRoot.style.visibility = '';
+  googleAiModeHeaderAnchor = anchor;
+}
+
+function scheduleGoogleAiModeHeaderAlignment() {
+  if (detectPlatform() !== 'google-ai-mode' || googleAiModeAlignScheduled) {
+    return;
+  }
+
+  googleAiModeAlignScheduled = true;
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      googleAiModeAlignScheduled = false;
+      alignGoogleAiModeHeaderButton();
+    });
   });
 }
 
@@ -593,6 +710,8 @@ function init() {
 
   if (platform === 'deepseek') {
     scheduleDeepSeekAlignment();
+  } else if (platform === 'google-ai-mode') {
+    scheduleGoogleAiModeHeaderAlignment();
   }
 
   console.log('[Chatdown] Button rendered successfully');
@@ -616,6 +735,7 @@ const observer = new MutationObserver(() => {
   }
 
   scheduleDeepSeekAlignment();
+  scheduleGoogleAiModeHeaderAlignment();
 });
 
 observer.observe(document.body, {
@@ -624,3 +744,5 @@ observer.observe(document.body, {
 });
 
 window.addEventListener('resize', scheduleDeepSeekAlignment);
+window.addEventListener('resize', scheduleGoogleAiModeHeaderAlignment);
+window.addEventListener('scroll', scheduleGoogleAiModeHeaderAlignment, true);
