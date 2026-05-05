@@ -123,6 +123,10 @@ Then load the `dist/` directory as an unpacked extension. Changes will be reflec
 npm run build
 ```
 
+### Deployment
+
+For built-in API backend deployment and production extension packaging, see [docs/deployment.md](./docs/deployment.md).
+
 ### Project Structure
 
 ```

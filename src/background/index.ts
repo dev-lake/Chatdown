@@ -11,7 +11,15 @@ import type {
   Platform,
 } from '../types';
 import { getCurrentLocaleContext, type TranslateFn } from '../i18n/core';
-import { getApiConfig, getNotionConfig, getObsidianConfig } from './storage';
+import {
+  clearBuiltInAuthState,
+  getApiConfig,
+  getBuiltInAuthState,
+  getDefaultServerBaseUrl,
+  getNotionConfig,
+  getObsidianConfig,
+  setBuiltInAuthState,
+} from './storage';
 import {
   generateArticle,
   rewriteArticleSelection,
@@ -25,6 +33,7 @@ const ARTICLE_CACHE_KEY_PREFIX = 'articleCache:';
 const ROUND_PREVIEW_LENGTH = 180;
 const MAX_OBSIDIAN_FILE_NAME_BASE_LENGTH = 80;
 const LOCAL_EDIT_OPERATIONS: readonly LocalEditOperation[] = ['expand', 'polish', 'shorten', 'custom', 'delete'];
+const AUTH_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface ArticleCacheEntry {
   article: string;
@@ -582,6 +591,20 @@ async function runArticleGeneration(
     notice?: string;
   } = {}
 ): Promise<ArticleState> {
+  const account = await getBuiltInAuthState();
+  if (!account) {
+    const errorMessage = t('backgroundBuiltInAuthRequired');
+    await publishError(tabId, t, errorMessage, {
+      messages: request.allMessages,
+      sourceUrl: request.sourceUrl,
+      platform: request.platform,
+      mode: request.mode,
+      rounds: request.mode === 'partial' ? request.rounds : [],
+      selectedRoundIds: request.mode === 'partial' ? normalizeSelectedRoundIds(request.rounds, request.selectedRoundIds) : [],
+    });
+    throw new Error(errorMessage);
+  }
+
   const config = await getApiConfig();
 
   if (!config) {
@@ -756,6 +779,29 @@ async function preparePartialSelection(
   previousVisibleState: ArticleState | null,
   t: TranslateFn
 ): Promise<SelectionPreparationResult> {
+  const account = await getBuiltInAuthState();
+  if (!account) {
+    const errorMessage = t('backgroundBuiltInAuthRequired');
+    const conversationHash = hashMessages(messages);
+
+    if (previousVisibleState) {
+      const restoredState = await restoreVisibleArticle(tabId, previousVisibleState, errorMessage);
+      return { state: restoredState, error: errorMessage };
+    }
+
+    const errorState = await publishError(tabId, t, errorMessage, {
+      conversationHash,
+      messages,
+      sourceUrl,
+      platform,
+      mode: 'partial',
+      rounds: [],
+      selectedRoundIds: [],
+    });
+
+    return { state: errorState, error: errorMessage };
+  }
+
   const config = await getApiConfig();
   const conversationHash = hashMessages(messages);
   const baseRounds = buildConversationRounds(messages);
@@ -908,6 +954,26 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
+    if (message.action === 'requestLoginCode') {
+      void handleRequestLoginCode(message, sendResponse);
+      return true;
+    }
+
+    if (message.action === 'verifyLoginCode') {
+      void handleVerifyLoginCode(message, sendResponse);
+      return true;
+    }
+
+    if (message.action === 'getBuiltInAccount') {
+      void handleGetBuiltInAccount(sendResponse);
+      return true;
+    }
+
+    if (message.action === 'logoutBuiltInAccount') {
+      void handleLogoutBuiltInAccount(sendResponse);
+      return true;
+    }
+
     if (message.action === 'getArticleState') {
       void handleGetArticleState(sender, sendResponse);
       return true;
@@ -956,6 +1022,20 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   activeWorkflows.get(tabId)?.controller.abort();
   activeWorkflows.delete(tabId);
   void clearArticleStateForTab(tabId);
+});
+
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason !== 'install') {
+    return;
+  }
+
+  void getBuiltInAuthState().then((account) => {
+    if (!account) {
+      void chrome.tabs.create({
+        url: chrome.runtime.getURL('src/login/index.html'),
+      });
+    }
+  });
 });
 
 async function handleStartArticleGeneration(
@@ -1111,6 +1191,12 @@ async function handleTestConnection(
   const { t } = await getCurrentLocaleContext();
 
   try {
+    const account = await getBuiltInAuthState();
+    if (!account) {
+      sendResponse({ success: false, error: t('backgroundBuiltInAuthRequired') });
+      return;
+    }
+
     if (!message.config) {
       sendResponse({ error: t('backgroundNoConfigurationProvided') });
       return;
@@ -1124,6 +1210,193 @@ async function handleTestConnection(
       error: error instanceof Error ? error.message : t('commonUnknownError'),
     });
   }
+}
+
+async function requestBuiltInServer(
+  path: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  return fetch(`${getDefaultServerBaseUrl()}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    },
+  });
+}
+
+async function getAuthErrorMessage(response: Response, t: TranslateFn, fallback: string): Promise<string> {
+  let payload: { error?: string } = {};
+  try {
+    payload = await response.json();
+  } catch {
+    return fallback;
+  }
+
+  switch (payload.error) {
+    case 'INVALID_EMAIL':
+      return t('settingsAuthInvalidEmail');
+    case 'INVALID_CODE':
+      return t('settingsAuthVerifyCodeFailed');
+    case 'TOO_MANY_ATTEMPTS':
+      return t('settingsAuthTooManyAttempts');
+    case 'CODE_COOLDOWN':
+      return t('settingsAuthCodeCooldown');
+    case 'CODE_RATE_LIMITED':
+      return t('settingsAuthRateLimited');
+    case 'EMAIL_DELIVERY_FAILED':
+      return t('settingsAuthRequestCodeFailed');
+    default:
+      return fallback;
+  }
+}
+
+async function handleRequestLoginCode(
+  message: ChromeMessage,
+  sendResponse: (response: ChromeResponse) => void
+) {
+  const { t } = await getCurrentLocaleContext();
+  const email = message.email?.trim() ?? '';
+
+  try {
+    if (!email) {
+      sendResponse({ success: false, error: t('settingsAuthEmailRequired') });
+      return;
+    }
+
+    if (!AUTH_EMAIL_PATTERN.test(email)) {
+      sendResponse({ success: false, error: t('settingsAuthInvalidEmail') });
+      return;
+    }
+
+    const response = await requestBuiltInServer('/api/auth/request-code', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok) {
+      sendResponse({
+        success: false,
+        error: await getAuthErrorMessage(response, t, t('settingsAuthRequestCodeFailed')),
+      });
+      return;
+    }
+
+    sendResponse({ success: true });
+  } catch (error) {
+    sendResponse({
+      success: false,
+      error: t('settingsBuiltInServerUnavailable', {
+        error: error instanceof Error ? error.message : t('commonUnknownError'),
+      }),
+    });
+  }
+}
+
+async function handleVerifyLoginCode(
+  message: ChromeMessage,
+  sendResponse: (response: ChromeResponse) => void
+) {
+  const { t } = await getCurrentLocaleContext();
+  const email = message.email?.trim() ?? '';
+  const code = message.code?.trim() ?? '';
+
+  try {
+    if (!email || !code) {
+      sendResponse({ success: false, error: t('settingsAuthCodeRequired') });
+      return;
+    }
+
+    if (!AUTH_EMAIL_PATTERN.test(email)) {
+      sendResponse({ success: false, error: t('settingsAuthInvalidEmail') });
+      return;
+    }
+
+    if (!/^\d{6}$/.test(code)) {
+      sendResponse({ success: false, error: t('settingsAuthInvalidCode') });
+      return;
+    }
+
+    const response = await requestBuiltInServer('/api/auth/verify-code', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    });
+
+    if (!response.ok) {
+      sendResponse({
+        success: false,
+        error: await getAuthErrorMessage(response, t, t('settingsAuthVerifyCodeFailed')),
+      });
+      return;
+    }
+
+    const account = await response.json();
+    await setBuiltInAuthState(account);
+    sendResponse({ success: true, account });
+  } catch (error) {
+    sendResponse({
+      success: false,
+      error: t('settingsBuiltInServerUnavailable', {
+        error: error instanceof Error ? error.message : t('commonUnknownError'),
+      }),
+    });
+  }
+}
+
+async function handleGetBuiltInAccount(
+  sendResponse: (response: ChromeResponse) => void
+) {
+  const { t } = await getCurrentLocaleContext();
+  const account = await getBuiltInAuthState();
+
+  if (!account) {
+    sendResponse({ success: true, account: null });
+    return;
+  }
+
+  try {
+    const response = await requestBuiltInServer('/api/me', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${account.token}`,
+      },
+    });
+
+    if (response.status === 401) {
+      await clearBuiltInAuthState();
+      sendResponse({ success: true, account: null });
+      return;
+    }
+
+    if (!response.ok) {
+      sendResponse({ success: true, account });
+      return;
+    }
+
+    const payload = await response.json();
+    const refreshedAccount = {
+      token: account.token,
+      user: payload.user,
+      quota: payload.quota,
+    };
+    await setBuiltInAuthState(refreshedAccount);
+    sendResponse({ success: true, account: refreshedAccount });
+  } catch (error) {
+    sendResponse({
+      success: false,
+      error: t('settingsBuiltInServerUnavailable', {
+        error: error instanceof Error ? error.message : t('commonUnknownError'),
+      }),
+      account,
+    });
+  }
+}
+
+async function handleLogoutBuiltInAccount(
+  sendResponse: (response: ChromeResponse) => void
+) {
+  await clearBuiltInAuthState();
+  sendResponse({ success: true, account: null });
 }
 
 async function handleGetArticleState(
@@ -1285,6 +1558,12 @@ async function handleModifyArticleSelection(
   }
 
   try {
+    const account = await getBuiltInAuthState();
+    if (!account) {
+      sendResponse({ error: t('backgroundBuiltInAuthRequired') });
+      return;
+    }
+
     const config = await getApiConfig();
 
     if (!config) {

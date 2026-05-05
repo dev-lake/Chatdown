@@ -1,5 +1,6 @@
 import type { ApiConfig, ConversationRound, Locale, LocalEditOperation, Message } from '../types';
 import type { TranslateFn } from '../i18n/core';
+import { setBuiltInQuota } from './storage';
 
 const ARTICLE_SYSTEM_PROMPT = `You are a technical writer.
 Convert the following AI conversation into a well-structured tutorial article.
@@ -314,7 +315,7 @@ async function requestChatCompletion(
   body: Record<string, unknown>,
   signal?: AbortSignal
 ): Promise<Response> {
-  return fetch(`${config.apiBaseUrl}/v1/chat/completions`, {
+  const response = await fetch(`${config.apiBaseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -323,6 +324,55 @@ async function requestChatCompletion(
     body: JSON.stringify(body),
     signal,
   });
+
+  const remaining = response.headers.get('X-Chatdown-Quota-Remaining');
+  if (config.apiMode === 'builtIn' && remaining !== null) {
+    const parsedRemaining = Number.parseInt(remaining, 10);
+    if (Number.isFinite(parsedRemaining)) {
+      void setBuiltInQuota({
+        limit: 10,
+        used: Math.max(0, 10 - parsedRemaining),
+        remaining: parsedRemaining,
+        resetAt: '',
+      });
+    }
+  }
+
+  return response;
+}
+
+async function readErrorResponse(response: Response): Promise<string> {
+  const text = await response.text();
+
+  try {
+    const parsed = JSON.parse(text) as {
+      error?: string | { message?: string };
+      detail?: string;
+      quota?: {
+        remaining?: number;
+      };
+    };
+
+    if (parsed.error === 'UNAUTHORIZED') {
+      return 'BUILT_IN_AUTH_REQUIRED';
+    }
+
+    if (parsed.error === 'QUOTA_EXCEEDED') {
+      return 'BUILT_IN_QUOTA_EXCEEDED';
+    }
+
+    if (typeof parsed.error === 'string') {
+      return parsed.detail ? `${parsed.error}: ${parsed.detail}` : parsed.error;
+    }
+
+    if (parsed.error?.message) {
+      return parsed.error.message;
+    }
+  } catch {
+    // Fall back to provider text below.
+  }
+
+  return text;
 }
 
 async function requestTextCompletion(
@@ -348,7 +398,7 @@ async function requestTextCompletion(
   }, signal);
 
   if (!response.ok) {
-    const error = await response.text();
+    const error = await readErrorResponse(response);
     throw new Error(error);
   }
 
@@ -438,6 +488,10 @@ function toLocalizedErrorMessage(error: unknown, t: TranslateFn): string {
       return t('llmRoundSummariesCountMismatch');
     case 'RESPONSE_BODY_UNREADABLE':
       return t('llmResponseBodyUnreadable');
+    case 'BUILT_IN_AUTH_REQUIRED':
+      return t('backgroundBuiltInAuthRequired');
+    case 'BUILT_IN_QUOTA_EXCEEDED':
+      return t('backgroundBuiltInQuotaExceeded');
     default:
       return t('llmApiRequestFailed', { error: error.message });
   }
@@ -514,7 +568,13 @@ export async function generateArticle(
   }, signal);
 
   if (!response.ok) {
-    const error = await response.text();
+    const error = await readErrorResponse(response);
+    if (error === 'BUILT_IN_AUTH_REQUIRED') {
+      throw new Error(t('backgroundBuiltInAuthRequired'));
+    }
+    if (error === 'BUILT_IN_QUOTA_EXCEEDED') {
+      throw new Error(t('backgroundBuiltInQuotaExceeded'));
+    }
     throw new Error(t('llmApiRequestFailed', { error }));
   }
 

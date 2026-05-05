@@ -1,11 +1,16 @@
-import type { ApiConfig, NotionConfig, ObsidianConfig } from '../types';
+import type { ApiConfig, BuiltInAuthState, NotionConfig, ObsidianConfig } from '../types';
 
 const DEFAULT_OBSIDIAN_FOLDER = 'Chatdown';
+const DEFAULT_SERVER_BASE_URL = (import.meta.env.VITE_CHATDOWN_DEFAULT_SERVER_URL || 'https://localhost:5001').replace(/\/+$/, '');
+const DEFAULT_BUILT_IN_MODEL = import.meta.env.VITE_CHATDOWN_DEFAULT_MODEL || 'gpt-4o-mini';
 
 const STORAGE_KEYS = {
   API_BASE_URL: 'apiBaseUrl',
   API_KEY: 'apiKey',
   MODEL_NAME: 'modelName',
+  BUILT_IN_AUTH_TOKEN: 'builtInAuthToken',
+  BUILT_IN_AUTH_USER: 'builtInAuthUser',
+  BUILT_IN_QUOTA: 'builtInQuota',
   NOTION_TOKEN: 'notionIntegrationToken',
   NOTION_DATABASE_ID: 'notionDatabaseId',
   OBSIDIAN_VAULT: 'obsidianVault',
@@ -17,16 +22,27 @@ export async function getApiConfig(): Promise<ApiConfig | null> {
     STORAGE_KEYS.API_BASE_URL,
     STORAGE_KEYS.API_KEY,
     STORAGE_KEYS.MODEL_NAME,
+    STORAGE_KEYS.BUILT_IN_AUTH_TOKEN,
   ]);
 
-  if (!result.apiBaseUrl || !result.apiKey || !result.modelName) {
+  if (result.apiBaseUrl && result.apiKey && result.modelName) {
+    return {
+      apiMode: 'custom',
+      apiBaseUrl: result.apiBaseUrl,
+      apiKey: result.apiKey,
+      modelName: result.modelName,
+    };
+  }
+
+  if (!result.builtInAuthToken) {
     return null;
   }
 
   return {
-    apiBaseUrl: result.apiBaseUrl,
-    apiKey: result.apiKey,
-    modelName: result.modelName,
+    apiMode: 'builtIn',
+    apiBaseUrl: DEFAULT_SERVER_BASE_URL,
+    apiKey: result.builtInAuthToken,
+    modelName: DEFAULT_BUILT_IN_MODEL,
   };
 }
 
@@ -36,6 +52,59 @@ export async function setApiConfig(config: ApiConfig): Promise<void> {
     [STORAGE_KEYS.API_KEY]: config.apiKey,
     [STORAGE_KEYS.MODEL_NAME]: config.modelName,
   });
+}
+
+export function getDefaultServerBaseUrl(): string {
+  return DEFAULT_SERVER_BASE_URL;
+}
+
+export function getDefaultBuiltInModel(): string {
+  return DEFAULT_BUILT_IN_MODEL;
+}
+
+export async function getBuiltInAuthState(): Promise<BuiltInAuthState | null> {
+  const result = await chrome.storage.local.get([
+    STORAGE_KEYS.BUILT_IN_AUTH_TOKEN,
+    STORAGE_KEYS.BUILT_IN_AUTH_USER,
+    STORAGE_KEYS.BUILT_IN_QUOTA,
+  ]);
+
+  if (!result.builtInAuthToken || !result.builtInAuthUser) {
+    return null;
+  }
+
+  return {
+    token: result.builtInAuthToken,
+    user: result.builtInAuthUser,
+    quota: result.builtInQuota || {
+      limit: 10,
+      used: 0,
+      remaining: 10,
+      resetAt: '',
+    },
+  };
+}
+
+export async function setBuiltInAuthState(state: BuiltInAuthState): Promise<void> {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.BUILT_IN_AUTH_TOKEN]: state.token,
+    [STORAGE_KEYS.BUILT_IN_AUTH_USER]: state.user,
+    [STORAGE_KEYS.BUILT_IN_QUOTA]: state.quota,
+  });
+}
+
+export async function setBuiltInQuota(quota: BuiltInAuthState['quota']): Promise<void> {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.BUILT_IN_QUOTA]: quota,
+  });
+}
+
+export async function clearBuiltInAuthState(): Promise<void> {
+  await chrome.storage.local.remove([
+    STORAGE_KEYS.BUILT_IN_AUTH_TOKEN,
+    STORAGE_KEYS.BUILT_IN_AUTH_USER,
+    STORAGE_KEYS.BUILT_IN_QUOTA,
+  ]);
 }
 
 export async function getNotionConfig(): Promise<NotionConfig | null> {

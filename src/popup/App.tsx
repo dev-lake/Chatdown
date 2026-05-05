@@ -1,16 +1,33 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useI18n } from '../i18n/react';
+import type { BuiltInAuthState, ChromeMessage, ChromeResponse } from '../types';
 
 export default function App() {
   const { locale, t } = useI18n();
+  const [account, setAccount] = useState<BuiltInAuthState | null>(null);
 
   useEffect(() => {
     document.title = t('popupDocumentTitle');
     document.documentElement.lang = locale;
   }, [locale, t]);
 
+  useEffect(() => {
+    chrome.runtime.sendMessage({ action: 'getBuiltInAccount' } satisfies ChromeMessage, (response: ChromeResponse) => {
+      setAccount(response.account ?? null);
+    });
+  }, []);
+
   const handleOpenSettings = () => {
+    if (!account) {
+      handleOpenLogin();
+      return;
+    }
+
     chrome.runtime.openOptionsPage();
+  };
+
+  const handleOpenLogin = () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('src/login/index.html') });
   };
 
   return (
@@ -48,9 +65,22 @@ export default function App() {
         </ul>
       </div>
 
+      {account ? (
+        <div className="mb-4 rounded border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+          {t('popupSignedInAs', { email: account.user.email })}
+        </div>
+      ) : (
+        <button
+          onClick={handleOpenLogin}
+          className="mb-3 w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors"
+        >
+          {t('popupOpenLogin')}
+        </button>
+      )}
+
       <button
         onClick={handleOpenSettings}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors"
+        className="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded transition-colors"
       >
         {t('popupOpenSettings')}
       </button>

@@ -8,3 +8,9 @@ artifacts
 .claude
 .codex
 __pycache__
+*.pyc
+.pytest_cache
+.env
+.env.*
+server/.venv
+server/chatdown.sqlite3

@@ -9,6 +9,7 @@ export type LocalePreference = 'auto' | Locale;
 export type WorkflowPhase = 'idle' | 'summarizing_rounds' | 'selecting_rounds' | 'generating' | 'ready' | 'error';
 export type GenerationMode = 'full' | 'partial';
 export type LocalEditOperation = 'expand' | 'polish' | 'shorten' | 'custom' | 'delete';
+export type ApiMode = 'builtIn' | 'custom';
 
 export interface ConversationRound {
   id: string;
@@ -33,9 +34,28 @@ export interface ArticleState {
 }
 
 export interface ApiConfig {
+  apiMode: ApiMode;
   apiBaseUrl: string;
   apiKey: string;
   modelName: string;
+}
+
+export interface AuthUser {
+  id: number;
+  email: string;
+}
+
+export interface QuotaState {
+  limit: number;
+  used: number;
+  remaining: number;
+  resetAt: string;
+}
+
+export interface BuiltInAuthState {
+  token: string;
+  user: AuthUser;
+  quota: QuotaState;
 }
 
 export interface NotionConfig {
@@ -59,6 +79,10 @@ export interface ChromeMessage {
     | 'startArticleGeneration'
     | 'generateArticleFromSelection'
     | 'testConnection'
+    | 'requestLoginCode'
+    | 'verifyLoginCode'
+    | 'getBuiltInAccount'
+    | 'logoutBuiltInAccount'
     | 'displayArticle'
     | 'partialSelectionLoading'
     | 'partialSelectionReady'
@@ -74,6 +98,8 @@ export interface ChromeMessage {
     | 'modifyArticleSelection';
   messages?: Message[];
   config?: ApiConfig;
+  email?: string;
+  code?: string;
   article?: string;
   chunk?: string;
   sourceUrl?: string;
@@ -98,6 +124,7 @@ export interface ChromeResponse {
   success?: boolean;
   missingProperties?: string[];
   state?: ArticleState;
+  account?: BuiltInAuthState | null;
 }
 
 export type Platform = 'chatgpt' | 'gemini' | 'deepseek' | 'doubao' | 'google-ai-mode' | 'unknown';
